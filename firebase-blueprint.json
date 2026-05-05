@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "Gift": {
+      "title": "Spiritual Gift",
+      "description": "A definition of a spiritual gift and its associated metadata.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "scripture": { "type": "string" },
+        "serviceTeams": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["id", "name", "description"]
+    },
+    "Question": {
+      "title": "Survey Question",
+      "description": "A survey question mapped to a specific spiritual gift.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "giftId": { "type": "string" }
+      },
+      "required": ["id", "text", "giftId"]
+    },
+    "Result": {
+      "title": "Survey Result",
+      "description": "A completed survey response from a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "responses": { "type": "array" },
+        "scores": { "type": "object" },
+        "primaryGiftIds": { "type": "array" },
+        "email": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["userId", "timestamp", "primaryGiftIds"]
+    },
+    "Analytics": {
+      "title": "Analytics Event",
+      "description": "Event tracked for analytics purposes.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "Admin": {
+      "title": "System Administrator",
+      "description": "Users with administrative privileges.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "gifts/{giftId}": {
+      "schema": "Gift",
+      "description": "Collection of all spiritual gifts."
+    },
+    "questions/{questionId}": {
+      "schema": "Question",
+      "description": "Collection of survey questions."
+    },
+    "results/{resultId}": {
+      "schema": "Result",
+      "description": "User completion data."
+    },
+    "analytics/{eventId}": {
+      "schema": "Analytics",
+      "description": "Raw analytics events."
+    },
+    "admins/{userId}": {
+      "schema": "Admin",
+      "description": "Authorized administrators."
+    }
+  }
+}

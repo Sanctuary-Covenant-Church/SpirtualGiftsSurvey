@@ -22,14 +22,19 @@ import {
   ShieldCheck,
   TrendingUp,
   Gift as GiftIcon,
-  ExternalLink
+  ExternalLink,
+  ShieldAlert
 } from 'lucide-react';
+import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import Layout from './components/Layout';
+import AdminDashboard from './components/AdminDashboard';
+import { db, auth, googleProvider } from './lib/firebase';
 import { INITIAL_QUESTIONS, INITIAL_GIFTS } from './constants';
 import { Question, Gift, SurveyResponse, SurveyResult } from './types';
 import { trackEvent } from './utils/analytics';
 
-type View = 'hero' | 'survey' | 'results';
+type View = 'hero' | 'survey' | 'results' | 'admin';
 
 export default function App() {
   const [view, setView] = useState<View>('hero');
@@ -38,6 +43,40 @@ export default function App() {
   const [userInfo, setUserInfo] = useState({ name: '', email: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<SurveyResult | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  
+  // Dynamic content from Firestore
+  const [questions, setQuestions] = useState<Question[]>(INITIAL_QUESTIONS);
+  const [gifts, setGifts] = useState<Gift[]>(INITIAL_GIFTS);
+  const [isDataLoading, setIsDataLoading] = useState(true);
+
+  // Sync with Auth
+  useEffect(() => {
+    return onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
+  }, []);
+
+  // Sync Questions & Gifts
+  useEffect(() => {
+    const unsubGifts = onSnapshot(collection(db, 'gifts'), (snapshot) => {
+      if (!snapshot.empty) {
+        setGifts(snapshot.docs.map(doc => doc.data() as Gift));
+      }
+    });
+
+    const unsubQuestions = onSnapshot(query(collection(db, 'questions'), orderBy('id', 'asc')), (snapshot) => {
+      if (!snapshot.empty) {
+        setQuestions(snapshot.docs.map(doc => doc.data() as Question));
+      }
+      setIsDataLoading(false);
+    });
+
+    return () => {
+      unsubGifts();
+      unsubQuestions();
+    };
+  }, []);
 
   // Track page view
   useEffect(() => {
@@ -49,12 +88,21 @@ export default function App() {
     trackEvent('survey_start');
   };
 
+  const handleAdminLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      setView('admin');
+    } catch (error) {
+      console.error('Login failed', error);
+    }
+  };
+
   const handleResponse = (score: number) => {
-    const question = INITIAL_QUESTIONS[currentQuestionIndex];
+    const question = questions[currentQuestionIndex];
     const newResponses = [...responses.filter(r => r.questionId !== question.id), { questionId: question.id, score }];
     setResponses(newResponses);
 
-    if (currentQuestionIndex < INITIAL_QUESTIONS.length - 1) {
+    if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
       setResult(calculateResult(newResponses));
@@ -63,13 +111,13 @@ export default function App() {
 
   const calculateResult = (finalResponses: SurveyResponse[]): SurveyResult => {
     const scores: Record<string, number> = {};
-    INITIAL_GIFTS.forEach(gift => scores[gift.id] = 0);
+    gifts.forEach(gift => scores[gift.id] = 0);
     finalResponses.forEach(resp => {
-      const question = INITIAL_QUESTIONS.find(q => q.id === resp.questionId);
+      const question = questions.find(q => q.id === resp.questionId);
       if (question) scores[question.giftId] += resp.score;
     });
 
-    const sortedGifts = [...INITIAL_GIFTS].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
+    const sortedGifts = [...gifts].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
     const topGifts = sortedGifts.slice(0, 3).filter(g => (scores[g.id] || 0) > 0);
 
     return {
@@ -111,10 +159,33 @@ export default function App() {
     setResult(null);
   };
 
-  const progress = (currentQuestionIndex / INITIAL_QUESTIONS.length) * 100;
+  const progress = (currentQuestionIndex / questions.length) * 100;
+
+  if (view === 'admin') {
+    // Basic reactive security check before rendering the potentially heavy dashboard
+    if (user?.email !== 'cdonyi@gmail.com') {
+      return (
+        <div className="h-screen flex items-center justify-center bg-brand-bg flex-col gap-6">
+          <ShieldAlert className="w-12 h-12 text-red-500" />
+          <p className="text-sm font-bold uppercase tracking-widest text-brand-muted">Unauthorized Access</p>
+          <button onClick={() => setView('hero')} className="px-6 py-3 bg-brand-text text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em]">Return Home</button>
+        </div>
+      );
+    }
+    return <AdminDashboard onExit={() => setView('hero')} />;
+  }
 
   return (
     <Layout>
+      <div className="fixed bottom-4 right-4 z-50 opacity-20 hover:opacity-100 transition-opacity">
+        <button 
+          onClick={user ? () => setView('admin') : handleAdminLogin}
+          className="p-2 bg-brand-bg border border-brand-border rounded-full hover:bg-brand-surface"
+          title="Admin Login"
+        >
+          <ShieldAlert className="w-4 h-4 text-brand-muted" />
+        </button>
+      </div>
       <AnimatePresence mode="wait">
         {view === 'hero' && (
           <motion.div
@@ -167,7 +238,7 @@ export default function App() {
 
             <div className="bg-white border border-brand-border p-10 sm:p-16 rounded-[2rem] mb-12">
               <p className="text-2xl sm:text-3xl text-brand-text font-serif italic leading-snug mb-16 text-center">
-                "{INITIAL_QUESTIONS[currentQuestionIndex].text}"
+                "{questions[currentQuestionIndex]?.text}"
               </p>
 
               <div className="max-w-md mx-auto">
@@ -201,7 +272,7 @@ export default function App() {
               </button>
             </div>
 
-            {currentQuestionIndex === INITIAL_QUESTIONS.length - 1 && responses.length === INITIAL_QUESTIONS.length && !result?.email && (
+            {currentQuestionIndex === questions.length - 1 && responses.length === questions.length && !result?.email && (
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -261,13 +332,13 @@ export default function App() {
                 <div className="space-y-12 max-w-2xl">
                   {result.primaryGiftIds.length > 0 && (
                     <p className="text-lg text-brand-muted leading-relaxed font-light">
-                      Based on your responses, your primary spiritual gift is <span className="text-brand-text font-semibold italic">{INITIAL_GIFTS.find(g => g.id === result.primaryGiftIds[0])?.name}</span>. You have a unique, God-given ability that ripples through the lives of those you serve.
+                      Based on your responses, your primary spiritual gift is <span className="text-brand-text font-semibold italic">{gifts.find(g => g.id === result.primaryGiftIds[0])?.name}</span>. You have a unique, God-given ability that ripples through the lives of those you serve.
                     </p>
                   )}
 
                   <div className="grid sm:grid-cols-2 gap-6">
                     {result.primaryGiftIds.map((id, idx) => {
-                      const gift = INITIAL_GIFTS.find(g => g.id === id);
+                      const gift = gifts.find(g => g.id === id);
                       if (!gift) return null;
                       return (
                         <div key={gift.id} className="p-8 bg-white border border-brand-border rounded-[2rem] hover:border-brand-accent-sage transition-all group">

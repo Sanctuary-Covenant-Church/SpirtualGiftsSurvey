@@ -1,0 +1,82 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- HELPERS ---
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isAdmin() { 
+      return isSignedIn() && (
+        request.auth.token.email == 'cdonyi@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- COLLECTIONS ---
+
+    // Gifts (Manageable by admins, readable by all authenticated users for survey)
+    match /gifts/{giftId} {
+      allow read: if true; // Publicly readable for survey
+      allow write: if isAdmin();
+      
+      function isValidGift(data) {
+        return data.id is string && data.id.size() <= 64 &&
+               data.name is string && data.name.size() <= 128 &&
+               data.description is string && data.description.size() <= 2000;
+      }
+      
+      allow create: if isAdmin() && isValidGift(incoming()) && isValidId(giftId);
+      allow update: if isAdmin() && isValidGift(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Questions (Manageable by admins, readable by all for survey)
+    match /questions/{questionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      function isValidQuestion(data) {
+        return data.id is string && data.id.size() <= 64 &&
+               data.text is string && data.text.size() <= 500 &&
+               data.giftId is string;
+      }
+
+      allow create: if isAdmin() && isValidQuestion(incoming()) && isValidId(questionId);
+      allow update: if isAdmin() && isValidQuestion(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Results (Users can write, admins can read)
+    match /results/{resultId} {
+      allow create: if true; // Allow anonymous completions momentarily, or refine with auth
+      allow read: if isAdmin();
+      
+      function isValidResult(data) {
+        return data.userId is string &&
+               data.timestamp is string &&
+               data.primaryGiftIds is list;
+      }
+      
+      allow create: if isValidResult(incoming()) && isValidId(resultId);
+    }
+
+    // Analytics (Append only)
+    match /analytics/{eventId} {
+      allow create: if true;
+      allow read: if isAdmin();
+    }
+
+    // Admins (Only admins can manage admins)
+    match /admins/{userId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+  }
+}

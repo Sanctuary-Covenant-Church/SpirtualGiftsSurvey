@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { AnalyticsEvent } from "../types";
 
 export const trackEvent = async (type: AnalyticsEvent['type'], metadata?: Record<string, any>) => {
@@ -15,6 +17,10 @@ export const trackEvent = async (type: AnalyticsEvent['type'], metadata?: Record
   console.log(`[Track] ${type}`, metadata);
 
   try {
+    // Write to Firestore for the admin dashboard to consume
+    await addDoc(collection(db, 'analytics'), event);
+    
+    // Also keep the server log if needed, but Firestore is primary for the dashboard
     await fetch('/api/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
