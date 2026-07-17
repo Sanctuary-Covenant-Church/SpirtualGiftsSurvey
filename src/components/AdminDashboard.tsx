@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { db, auth } from '../lib/firebase';
 import { Gift, Question } from '../types';
+import { INITIAL_GIFTS, INITIAL_QUESTIONS } from '../constants';
 
 enum OperationType {
   CREATE = 'create',
@@ -63,6 +64,26 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   // Form states
   const [editingGift, setEditingGift] = useState<Partial<Gift> | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<Partial<Question> | null>(null);
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  const seedDatabase = async () => {
+    setIsSeeding(true);
+    try {
+      // Seed gifts
+      for (const gift of INITIAL_GIFTS) {
+        await setDoc(doc(db, 'gifts', gift.id), gift);
+      }
+      // Seed questions
+      for (const q of INITIAL_QUESTIONS) {
+        await setDoc(doc(db, 'questions', q.id), q);
+      }
+      alert('Database successfully initialized with standard spiritual gifts and questions!');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'seed_data');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   useEffect(() => {
     const unsubGifts = onSnapshot(collection(db, 'gifts'), (snapshot) => {
@@ -179,6 +200,27 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             </button>
           )}
         </header>
+
+        {gifts.length === 0 && questions.length === 0 && !isLoading && (
+          <div className="mb-12 p-8 bg-brand-surface border border-brand-border rounded-[2rem] flex flex-col md:flex-row justify-between items-center gap-6">
+            <div className="flex items-start gap-4">
+              <Info className="w-6 h-6 text-brand-accent-gold mt-1 shrink-0" />
+              <div>
+                <h3 className="font-serif italic text-lg mb-1 text-brand-text">New Database Detected</h3>
+                <p className="text-xs text-brand-muted max-w-xl leading-relaxed">
+                  Your migrated Firestore database is currently empty. You can instantly seed it with the default Sanctuary Covenant Church spiritual gifts and questions to get started.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={seedDatabase}
+              disabled={isSeeding}
+              className="px-6 py-3 bg-brand-accent-sage text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] whitespace-nowrap hover:bg-opacity-90 transition-all disabled:opacity-50"
+            >
+              {isSeeding ? 'Seeding...' : 'Seed Database'}
+            </button>
+          </div>
+        )}
 
         {activeTab === 'gifts' && (
           <div className="grid gap-6">
