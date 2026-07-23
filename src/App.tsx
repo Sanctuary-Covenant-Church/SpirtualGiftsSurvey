@@ -23,18 +23,24 @@ import {
   TrendingUp,
   Gift as GiftIcon,
   ExternalLink,
-  ShieldAlert
+  ShieldAlert,
+  Info
 } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import Layout from './components/Layout';
 import AdminDashboard from './components/AdminDashboard';
-import { db, auth, googleProvider } from './lib/firebase';
+import { db, auth, googleProvider, isFirebaseConfigured } from './lib/firebase';
 import { INITIAL_QUESTIONS, INITIAL_GIFTS } from './constants';
 import { Question, Gift, SurveyResponse, SurveyResult } from './types';
 import { trackEvent } from './utils/analytics';
 
 type View = 'hero' | 'survey' | 'results' | 'admin';
+
+const ALLOWED_ADMIN_EMAILS = [
+  'cdonyi@gmail.com',
+  'sanctuarycovdeveloper@gmail.com'
+];
 
 export default function App() {
   const [view, setView] = useState<View>('hero');
@@ -44,6 +50,8 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<SurveyResult | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [showSetupModal, setShowSetupModal] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   
   // Dynamic content from Firestore
   const [questions, setQuestions] = useState<Question[]>(INITIAL_QUESTIONS);
@@ -52,6 +60,10 @@ export default function App() {
 
   // Sync with Auth
   useEffect(() => {
+    if (!isFirebaseConfigured || !auth) {
+      setIsDataLoading(false);
+      return;
+    }
     return onAuthStateChanged(auth, (u) => {
       setUser(u);
     });
@@ -59,6 +71,11 @@ export default function App() {
 
   // Sync Questions & Gifts
   useEffect(() => {
+    if (!isFirebaseConfigured) {
+      setIsDataLoading(false);
+      return;
+    }
+
     const unsubGifts = onSnapshot(collection(db, 'gifts'), (snapshot) => {
       if (!snapshot.empty) {
         setGifts(snapshot.docs.map(doc => doc.data() as Gift));
@@ -89,11 +106,33 @@ export default function App() {
   };
 
   const handleAdminLogin = async () => {
+    if (!isFirebaseConfigured) {
+      // In local demo mode, bypass Google Sign-in to allow easy client testing of the Admin Dashboard
+      setUser({
+        uid: 'demo-curator-id',
+        email: 'cdonyi@gmail.com',
+        displayName: 'Demo Curator',
+      } as any);
+      setView('admin');
+      return;
+    }
     try {
+      setLoginError(null);
       await signInWithPopup(auth, googleProvider);
       setView('admin');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login failed', error);
+      const errMsg = error?.message || String(error);
+      if (errMsg.includes('auth/configuration-not-found')) {
+        setLoginError('Google Sign-in is not enabled or not fully configured in your Firebase Project.\n\nTo resolve this:\n1. Go to the Firebase Console (https://console.firebase.google.com)\n2. Navigate to "Build" -> "Authentication" -> "Sign-in method" tab.\n3. Add and Enable the "Google" provider.\n4. Ensure you save the changes.');
+      } else if (errMsg.includes('auth/operation-not-allowed')) {
+        setLoginError('Google provider is disabled in your Firebase Console. Please go to Build -> Authentication and enable Google Sign-In.');
+      } else if (errMsg.includes('auth/unauthorized-domain')) {
+        const currentHost = window.location.hostname;
+        setLoginError(`Firebase Auth Error: Unauthorized Domain.\n\nThe domain "${currentHost}" is not authorized in your Firebase Project.\n\nTo resolve this:\n1. Go to the Firebase Console (https://console.firebase.google.com)\n2. Navigate to "Build" -> "Authentication" -> "Settings" tab (at the top right of the section).\n3. Click on "Authorized domains" on the left menu.\n4. Click "Add domain" and add:\n   • ${currentHost}\n5. If you share this app, also add:\n   • ais-pre-bun6aislalbji7kh7as6y6-513878994172.us-east1.run.app`);
+      } else {
+        setLoginError(`Firebase Auth Error: ${errMsg}`);
+      }
     }
   };
 
@@ -163,12 +202,37 @@ export default function App() {
 
   if (view === 'admin') {
     // Basic reactive security check before rendering the potentially heavy dashboard
-    if (user?.email !== 'cdonyi@gmail.com') {
+    if (!user?.email || !ALLOWED_ADMIN_EMAILS.includes(user.email)) {
       return (
-        <div className="h-screen flex items-center justify-center bg-brand-bg flex-col gap-6">
+        <div className="h-screen flex items-center justify-center bg-brand-bg flex-col gap-6 p-6 text-center">
           <ShieldAlert className="w-12 h-12 text-red-500" />
-          <p className="text-sm font-bold uppercase tracking-widest text-brand-muted">Unauthorized Access</p>
-          <button onClick={() => setView('hero')} className="px-6 py-3 bg-brand-text text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em]">Return Home</button>
+          <h2 className="text-2xl font-serif italic text-brand-text">Unauthorized Access</h2>
+          <p className="text-xs text-brand-muted max-w-md leading-relaxed">
+            You are logged in as <span className="font-bold text-brand-text">{user?.email || 'unknown'}</span>, which is not an authorized administrator.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 mt-2">
+            <button 
+              onClick={async () => {
+                try {
+                  if (auth) {
+                    await signOut(auth);
+                  }
+                  setView('hero');
+                } catch (err) {
+                  console.error("Failed to sign out", err);
+                }
+              }} 
+              className="px-6 py-3 border border-brand-border hover:bg-brand-surface rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all"
+            >
+              Sign Out & Switch User
+            </button>
+            <button 
+              onClick={() => setView('hero')} 
+              className="px-6 py-3 bg-brand-text text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-black transition-all"
+            >
+              Return Home
+            </button>
+          </div>
         </div>
       );
     }
@@ -176,12 +240,28 @@ export default function App() {
   }
 
   return (
-    <Layout>
-      <div className="fixed bottom-4 right-4 z-50 opacity-20 hover:opacity-100 transition-opacity">
+    <Layout 
+      activeView={view} 
+      onSelectView={(v) => setView(v)} 
+      onAdminClick={user ? () => setView('admin') : handleAdminLogin}
+      isAdminLoggedIn={!!user}
+    >
+      {!isFirebaseConfigured && (
+        <div className="bg-brand-accent-sage/10 border-b border-brand-border py-2.5 px-4 text-center text-xs text-brand-accent-sage flex items-center justify-center gap-2 font-medium z-40 relative">
+          <span>✨ Running in Local Demo Mode (Firebase database not connected).</span>
+          <button 
+            onClick={() => setShowSetupModal(true)} 
+            className="underline font-bold hover:text-brand-text transition-colors"
+          >
+            View Setup Guide
+          </button>
+        </div>
+      )}
+      <div className="fixed bottom-4 right-4 z-50 opacity-30 hover:opacity-100 transition-opacity">
         <button 
           onClick={user ? () => setView('admin') : handleAdminLogin}
-          className="p-2 bg-brand-bg border border-brand-border rounded-full hover:bg-brand-surface"
-          title="Admin Login"
+          className="p-2.5 bg-brand-bg border border-brand-border rounded-full hover:bg-brand-surface shadow-md"
+          title="Curator Admin Login"
         >
           <ShieldAlert className="w-4 h-4 text-brand-muted" />
         </button>
@@ -193,21 +273,33 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="max-w-4xl mx-auto px-6 py-24 sm:py-32 text-center"
+            className="max-w-4xl mx-auto px-6 py-20 sm:py-28 text-center"
           >
-            <span className="text-[11px] font-bold text-brand-accent-gold uppercase tracking-[0.3em] mb-6 block">Soul Discovery</span>
-            <h1 className="text-5xl sm:text-7xl font-serif italic mb-8 leading-tight">
+            <span className="text-[11px] font-bold text-brand-red uppercase tracking-[0.3em] mb-6 block">Soul Discovery</span>
+            <h1 className="text-5xl sm:text-7xl font-serif italic mb-8 leading-tight text-brand-text">
               A path toward <br/>purpose and grace.
             </h1>
             <p className="text-lg text-brand-muted mb-12 max-w-xl mx-auto leading-relaxed font-light">
-              Through this guided discovery, you will uncover the unique spiritual gifts bestowed upon you. It is the first step in finding your meaningful place within our community.
+              Through this guided discovery, you will uncover the unique spiritual gifts bestowed upon you. It is the first step in finding your meaningful place within our Sanctuary Covenant Church community.
             </p>
-            <button
-              onClick={startSurvey}
-              className="px-12 py-5 bg-brand-text text-white rounded-full text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-black transition-all shadow-xl shadow-brand-text/10"
-            >
-              Begin the Journey
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={startSurvey}
+                className="w-full sm:w-auto px-10 py-4.5 bg-brand-red text-white rounded-full text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-red-hover transition-all shadow-lg shadow-brand-red/20 flex items-center justify-center gap-2"
+              >
+                <span>Begin Spiritual Gifts Survey</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <a
+                href="https://sanctuarycov.org/join-a-team/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto px-8 py-4.5 bg-white border border-brand-border text-brand-text rounded-full text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-surface transition-all flex items-center justify-center gap-2"
+              >
+                <span>Join a Team (sanctuarycov.org)</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+              </a>
+            </div>
           </motion.div>
         )}
 
@@ -305,7 +397,7 @@ export default function App() {
                     <button 
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full py-5 bg-brand-text text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-black transition-all disabled:opacity-50"
+                      className="w-full py-5 bg-brand-red text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-red-hover transition-all disabled:opacity-50 shadow-md shadow-brand-red/20"
                     >
                       {isSubmitting ? "Generating..." : "Reveal Results"}
                     </button>
@@ -326,7 +418,7 @@ export default function App() {
             <div className="flex flex-col lg:flex-row gap-16">
               {/* Results Main Section */}
               <div className="flex-1">
-                <span className="text-[11px] font-bold text-brand-accent-gold uppercase tracking-[0.3em] mb-6 block">Survey Complete</span>
+                <span className="text-[11px] font-bold text-brand-red uppercase tracking-[0.3em] mb-6 block">Survey Complete</span>
                 <h2 className="text-5xl sm:text-6xl font-serif italic mb-8 leading-tight">Welcome to your <br/>ministry, {userInfo.name}.</h2>
                 
                 <div className="space-y-12 max-w-2xl">
@@ -341,13 +433,13 @@ export default function App() {
                       const gift = gifts.find(g => g.id === id);
                       if (!gift) return null;
                       return (
-                        <div key={gift.id} className="p-8 bg-white border border-brand-border rounded-[2rem] hover:border-brand-accent-sage transition-all group">
-                          <div className="text-[9px] uppercase tracking-widest text-brand-accent-gold mb-3 font-bold">{idx === 0 ? 'Primary' : 'Secondary'} Gift</div>
-                          <div className="text-2xl font-serif italic mb-2 group-hover:text-brand-accent-sage transition-colors">{gift.name}</div>
+                        <div key={gift.id} className="p-8 bg-white border border-brand-border rounded-[2rem] hover:border-brand-red transition-all group">
+                          <div className="text-[9px] uppercase tracking-widest text-brand-red mb-3 font-bold">{idx === 0 ? 'Primary' : 'Secondary'} Gift</div>
+                          <div className="text-2xl font-serif italic mb-2 group-hover:text-brand-red transition-colors">{gift.name}</div>
                           <p className="text-xs text-brand-muted leading-relaxed line-clamp-3 mb-4">{gift.description}</p>
                           <div className="h-[2px] w-full bg-brand-surface mt-4 overflow-hidden rounded-full">
                             <motion.div 
-                              className={`h-full ${idx === 0 ? 'bg-brand-accent-sage' : 'bg-brand-accent-gold'}`} 
+                              className={`h-full ${idx === 0 ? 'bg-brand-red' : 'bg-brand-accent-gold'}`} 
                               initial={{ width: 0 }}
                               animate={{ width: `${(result.scores[id] / 10) * 100}%` }}
                             />
@@ -375,16 +467,18 @@ export default function App() {
                   <div className="space-y-4 mb-auto">
                     <a 
                       href="https://sanctuarycov.org/join-a-team/" 
-                      className="block w-full py-5 bg-brand-text text-white text-center text-[10px] uppercase tracking-[0.25em] font-bold rounded-full hover:bg-black transition-all"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       onClick={() => trackEvent('cta_click', { target: 'join_a_team' })}
+                      className="block w-full py-5 bg-brand-red text-white text-center text-[10px] uppercase tracking-[0.25em] font-bold rounded-full hover:bg-brand-red-hover transition-all shadow-md shadow-brand-red/20"
                     >
-                      Join the Team
+                      Join a Team (sanctuarycov.org)
                     </a>
                     <button 
                       onClick={resetSurvey}
-                      className="block w-full py-5 border border-brand-text text-brand-text text-center text-[10px] uppercase tracking-[0.25em] font-bold rounded-full hover:bg-brand-text hover:text-white transition-all"
+                      className="block w-full py-4 border border-brand-border bg-white text-brand-text text-center text-[10px] uppercase tracking-[0.2em] font-bold rounded-full hover:bg-brand-surface transition-all"
                     >
-                      Retake Journey
+                      Retake Survey
                     </button>
                   </div>
 
@@ -415,6 +509,114 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Configuration & Migration Guide Modal */}
+      {showSetupModal && (
+        <div className="fixed inset-0 z-[200] bg-brand-text/50 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-brand-bg rounded-[2.5rem] p-10 max-w-2xl w-full border border-brand-border shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h3 className="text-2xl font-serif italic text-brand-text">Firebase Migration Guide</h3>
+                <p className="text-xs text-brand-muted mt-1">Configure your own Google Account's Firebase Database</p>
+              </div>
+              <button 
+                onClick={() => setShowSetupModal(false)}
+                className="text-xs font-bold uppercase tracking-widest text-brand-muted hover:text-brand-text p-2"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-6 text-sm text-brand-text leading-relaxed">
+              <div>
+                <h4 className="font-bold text-xs uppercase tracking-wider text-brand-accent-gold mb-2">Step 1: Get Firebase Credentials</h4>
+                <p className="text-xs text-brand-muted">
+                  Go to the <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-brand-text">Firebase Console</a>, create or select your project, go to <strong>Project Settings → General → Your apps</strong>, and create a Web App to get your configuration object.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-xs uppercase tracking-wider text-brand-accent-gold mb-2">Step 2: Add Environment Variables</h4>
+                <p className="text-xs text-brand-muted mb-3">
+                  Create a <code>.env</code> file in your local directory (or configure them in your deployment environment) and set the following variables using your project credentials:
+                </p>
+                <pre className="bg-brand-surface p-4 rounded-xl font-mono text-[10px] text-brand-text overflow-x-auto border border-brand-border">
+{`VITE_FIREBASE_API_KEY="your-api-key"
+VITE_FIREBASE_AUTH_DOMAIN="your-project.firebaseapp.com"
+VITE_FIREBASE_PROJECT_ID="your-project-id"
+VITE_FIREBASE_STORAGE_BUCKET="your-project.firebasestorage.app"
+VITE_FIREBASE_MESSAGING_SENDER_ID="your-sender-id"
+VITE_FIREBASE_APP_ID="your-app-id"
+VITE_FIREBASE_DATABASE_ID=""`}
+                </pre>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-xs uppercase tracking-wider text-brand-accent-gold mb-2">Step 3: Enable Authentication & Firestore</h4>
+                <ul className="list-disc pl-5 text-xs text-brand-muted space-y-1">
+                  <li>In the Firebase Console, go to <strong>Build → Authentication</strong> and enable the <strong>Google Sign-in</strong> provider.</li>
+                  <li>Go to <strong>Build → Firestore Database</strong> and create your database (Start in Test Mode or use the security rules in <code>firestore.rules</code>).</li>
+                </ul>
+              </div>
+
+              <div className="p-4 bg-brand-accent-sage/10 rounded-2xl border border-brand-accent-sage/20">
+                <p className="text-xs text-brand-accent-sage font-medium font-sans">
+                  💡 <strong>Seamless Offline Support:</strong> Since you are running in Local Demo Mode, all survey actions, results, and even the Admin Dashboard are completely functional! You can explore the entire app offline using built-in mock configurations.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowSetupModal(false)}
+              className="w-full mt-8 py-4 bg-brand-text text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-black transition-all"
+            >
+              Got it, Continue Demo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Login Error Modal */}
+      {loginError && (
+        <div className="fixed inset-0 z-[200] bg-brand-text/50 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-brand-bg rounded-[2.5rem] p-10 max-w-xl w-full border border-brand-border shadow-2xl">
+            <div className="flex items-center gap-3 text-red-600 mb-6">
+              <Info className="w-6 h-6 shrink-0" />
+              <h3 className="text-2xl font-serif italic text-brand-text">Authentication Error</h3>
+            </div>
+            
+            <p className="text-xs text-brand-muted uppercase tracking-wider font-bold mb-2">Details:</p>
+            <pre className="bg-brand-surface p-4 rounded-xl font-mono text-[10.5px] text-brand-text overflow-x-auto border border-brand-border leading-relaxed mb-6 whitespace-pre-wrap">
+              {loginError}
+            </pre>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  // Bypass live Google sign in and switch to demo admin mode
+                  setUser({
+                    uid: 'demo-curator-id',
+                    email: 'cdonyi@gmail.com',
+                    displayName: 'Demo Curator',
+                  } as any);
+                  setView('admin');
+                  setLoginError(null);
+                }}
+                className="w-full py-4 bg-brand-accent-sage text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-opacity-95 transition-all text-center block"
+              >
+                Proceed anyway using local Demo Mode
+              </button>
+              
+              <button
+                onClick={() => setLoginError(null)}
+                className="w-full py-4 bg-transparent border border-brand-border text-brand-text rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-surface transition-all text-center block"
+              >
+                Cancel & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

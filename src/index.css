@@ -1,24 +1,47 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=Inter:wght@300;400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Playfair Display", serif;
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
   
-  --color-brand-bg: #FDFCFB;
-  --color-brand-text: #2D2926;
-  --color-brand-muted: #8C857E;
+  --color-brand-bg: #FAF8F5;
+  --color-brand-text: #23201D;
+  --color-brand-muted: #78726A;
+  --color-brand-red: #C82A2C;
+  --color-brand-red-hover: #A51D1F;
   --color-brand-accent-sage: #5B634E;
-  --color-brand-accent-gold: #A68966;
-  --color-brand-border: #EAE6E1;
-  --color-brand-surface: #F3F1EF;
+  --color-brand-accent-gold: #C09A53;
+  --color-brand-border: #E8E3DC;
+  --color-brand-surface: #F3EFEA;
+  --color-brand-card: #FFFFFF;
 }
 
 body {
-  @apply font-sans bg-brand-bg text-brand-text antialiased;
+  @apply font-sans bg-brand-bg text-brand-text antialiased selection:bg-brand-red/20 selection:text-brand-text;
 }
 
 h1, h2, h3, h4 {
-  @apply font-serif italic;
+  @apply font-serif;
 }
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FAF8F5;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D8D2C9;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #C09A53;
+}
+
 

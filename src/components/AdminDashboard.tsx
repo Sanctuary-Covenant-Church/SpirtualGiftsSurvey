@@ -28,7 +28,8 @@ import {
   ChevronRight,
   Info
 } from 'lucide-react';
-import { db, auth } from '../lib/firebase';
+import { db, auth, isFirebaseConfigured, firebaseProjectId, firebaseDatabaseId } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
 import { Gift, Question } from '../types';
 import { INITIAL_GIFTS, INITIAL_QUESTIONS } from '../constants';
 
@@ -41,34 +42,55 @@ enum OperationType {
   WRITE = 'write',
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
 export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const [activeTab, setActiveTab] = useState<'gifts' | 'questions' | 'analytics'>('gifts');
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Form states
   const [editingGift, setEditingGift] = useState<Partial<Gift> | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<Partial<Question> | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
 
+  function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errInfo = {
+      error: errMsg,
+      authInfo: {
+        userId: auth?.currentUser?.uid || 'demo-user',
+        email: auth?.currentUser?.email || 'cdonyi@gmail.com',
+      },
+      operationType,
+      path
+    };
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+    
+    let userFriendly = errMsg;
+    if (errMsg.includes('permission-denied') || errMsg.toLowerCase().includes('permission')) {
+      userFriendly = 'Permission Denied: Your custom Firestore security rules do not allow this operation. Please make sure to configure your Firestore Rules to allow read & write access (either via console.firebase.google.com in "Rules" or in test mode), and that your authenticated user email is authorized.';
+    } else if (errMsg.includes('not-found') || errMsg.toLowerCase().includes('not found')) {
+      userFriendly = `Resource not found: Could not load data from collection '${path}'.`;
+    } else if (errMsg.toLowerCase().includes('index')) {
+      userFriendly = `Index Required: This query requires an index. Follow the link printed in your browser developer console (F12) to create it.`;
+    }
+    
+    setError(userFriendly);
+    setIsLoading(false);
+  }
+
   const seedDatabase = async () => {
     setIsSeeding(true);
     try {
+      if (!isFirebaseConfigured) {
+        localStorage.setItem('sanctuary_gifts', JSON.stringify(INITIAL_GIFTS));
+        localStorage.setItem('sanctuary_questions', JSON.stringify(INITIAL_QUESTIONS));
+        setGifts(INITIAL_GIFTS);
+        setQuestions(INITIAL_QUESTIONS);
+        alert('Local database successfully initialized with standard spiritual gifts and questions!');
+        return;
+      }
       // Seed gifts
       for (const gift of INITIAL_GIFTS) {
         await setDoc(doc(db, 'gifts', gift.id), gift);
@@ -77,7 +99,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       for (const q of INITIAL_QUESTIONS) {
         await setDoc(doc(db, 'questions', q.id), q);
       }
-      alert('Database successfully initialized with standard spiritual gifts and questions!');
+      alert('Live Firestore database successfully initialized with standard spiritual gifts and questions!');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'seed_data');
     } finally {
@@ -86,6 +108,27 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   };
 
   useEffect(() => {
+    if (!isFirebaseConfigured) {
+      const localGifts = localStorage.getItem('sanctuary_gifts');
+      const localQuestions = localStorage.getItem('sanctuary_questions');
+      
+      if (localGifts) {
+        setGifts(JSON.parse(localGifts));
+      } else {
+        setGifts(INITIAL_GIFTS);
+        localStorage.setItem('sanctuary_gifts', JSON.stringify(INITIAL_GIFTS));
+      }
+      
+      if (localQuestions) {
+        setQuestions(JSON.parse(localQuestions));
+      } else {
+        setQuestions(INITIAL_QUESTIONS);
+        localStorage.setItem('sanctuary_questions', JSON.stringify(INITIAL_QUESTIONS));
+      }
+      setIsLoading(false);
+      return;
+    }
+
     const unsubGifts = onSnapshot(collection(db, 'gifts'), (snapshot) => {
       setGifts(snapshot.docs.map(doc => doc.data() as Gift));
       setIsLoading(false);
@@ -103,6 +146,16 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const saveGift = async (gift: Partial<Gift>) => {
     if (!gift.id) return;
+    if (!isFirebaseConfigured) {
+      const updatedGifts = gifts.map(g => g.id === gift.id ? { ...g, ...gift } as Gift : g);
+      if (!gifts.some(g => g.id === gift.id)) {
+        updatedGifts.push(gift as Gift);
+      }
+      setGifts(updatedGifts);
+      localStorage.setItem('sanctuary_gifts', JSON.stringify(updatedGifts));
+      setEditingGift(null);
+      return;
+    }
     try {
       await setDoc(doc(db, 'gifts', gift.id), gift);
       setEditingGift(null);
@@ -113,6 +166,12 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const deleteGift = async (id: string) => {
     if (!confirm('Are you sure? This will not delete questions mapped to this gift.')) return;
+    if (!isFirebaseConfigured) {
+      const updatedGifts = gifts.filter(g => g.id !== id);
+      setGifts(updatedGifts);
+      localStorage.setItem('sanctuary_gifts', JSON.stringify(updatedGifts));
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'gifts', id));
     } catch (err) {
@@ -122,6 +181,16 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const saveQuestion = async (q: Partial<Question>) => {
     const id = q.id || Date.now().toString();
+    if (!isFirebaseConfigured) {
+      const updatedQuestions = questions.map(qu => qu.id === id ? { ...qu, ...q } as Question : qu);
+      if (!questions.some(qu => qu.id === id)) {
+        updatedQuestions.push({ ...q, id } as Question);
+      }
+      setQuestions(updatedQuestions);
+      localStorage.setItem('sanctuary_questions', JSON.stringify(updatedQuestions));
+      setEditingQuestion(null);
+      return;
+    }
     try {
       await setDoc(doc(db, 'questions', id), { ...q, id });
       setEditingQuestion(null);
@@ -132,6 +201,12 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const deleteQuestion = async (id: string) => {
     if (!confirm('Delete this question?')) return;
+    if (!isFirebaseConfigured) {
+      const updatedQuestions = questions.filter(qu => qu.id !== id);
+      setQuestions(updatedQuestions);
+      localStorage.setItem('sanctuary_questions', JSON.stringify(updatedQuestions));
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'questions', id));
     } catch (err) {
@@ -167,13 +242,50 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             <BarChart3 className="w-4 h-4" /> Analytics
           </button>
         </nav>
-        <div className="p-4 border-t border-brand-border">
-          <button 
-            onClick={onExit}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[11px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all"
-          >
-            <LogOut className="w-4 h-4" /> Exit Admin
-          </button>
+        <div className="p-4 border-t border-brand-border bg-brand-surface/20">
+          <div className="px-3 py-2.5 rounded-xl border border-brand-border bg-white text-[9px] leading-relaxed mb-3">
+            <span className="font-bold text-brand-muted uppercase block mb-1">Firebase Sync Status</span>
+            <div className="space-y-0.5 font-mono text-brand-text/80">
+              <div className="truncate">Project: <span className="font-bold text-brand-accent-sage">{firebaseProjectId}</span></div>
+              {firebaseDatabaseId !== '(default)' && (
+                <div className="truncate">Database: <span className="font-bold">{firebaseDatabaseId}</span></div>
+              )}
+              <div>Mode: <span className={`font-bold ${isFirebaseConfigured ? 'text-brand-accent-sage' : 'text-amber-600'}`}>{isFirebaseConfigured ? 'Live Database' : 'Offline Mock'}</span></div>
+              {auth?.currentUser?.email && (
+                <div className="truncate border-t border-brand-border/60 mt-1 pt-1">
+                  User: <span className="font-bold text-brand-text">{auth.currentUser.email}</span>
+                </div>
+              )}
+            </div>
+            {!isFirebaseConfigured && (
+              <p className="mt-1.5 text-amber-700 leading-normal text-[8px]">
+                Running in Local Mock mode. Set API keys in Settings & click Compile to connect live.
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <button 
+              onClick={onExit}
+              className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest text-brand-text hover:bg-brand-surface transition-all"
+            >
+              <ChevronRight className="w-4 h-4 text-brand-muted" /> Exit Dashboard
+            </button>
+            <button 
+              onClick={async () => {
+                try {
+                  if (auth) {
+                    await signOut(auth);
+                  }
+                  onExit();
+                } catch (err) {
+                  console.error("Sign out failed", err);
+                }
+              }}
+              className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest text-red-600 hover:bg-red-50 transition-all"
+            >
+              <LogOut className="w-4 h-4" /> Sign Out
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -200,6 +312,45 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             </button>
           )}
         </header>
+
+        {error && (
+          <div className="mb-12 p-8 bg-red-50 border border-red-200 rounded-[2rem] flex items-start gap-4 shadow-sm animate-fade-in">
+            <Info className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <h3 className="text-red-800 font-bold text-xs uppercase tracking-wider mb-1">Database Sync Error</h3>
+              <p className="text-xs text-red-700 leading-relaxed font-mono whitespace-pre-wrap">{error}</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button 
+                  onClick={() => { setError(null); setIsLoading(true); window.location.reload(); }}
+                  className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-full text-[9px] font-bold uppercase tracking-wider transition-all"
+                >
+                  Retry Connection
+                </button>
+                <button 
+                  onClick={() => {
+                    setError(null);
+                    localStorage.setItem('sanctuary_gifts', JSON.stringify(INITIAL_GIFTS));
+                    localStorage.setItem('sanctuary_questions', JSON.stringify(INITIAL_QUESTIONS));
+                    setGifts(INITIAL_GIFTS);
+                    setQuestions(INITIAL_QUESTIONS);
+                    setIsLoading(false);
+                  }}
+                  className="px-4 py-2 bg-white border border-red-200 hover:bg-red-100 text-red-800 rounded-full text-[9px] font-bold uppercase tracking-wider transition-all"
+                >
+                  Load Mock Offline Data
+                </button>
+              </div>
+            </div>
+            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 text-xs font-bold">Dismiss</button>
+          </div>
+        )}
+
+        {isLoading && !error && (
+          <div className="flex flex-col items-center justify-center py-20 bg-white border border-brand-border rounded-[2rem] mb-12">
+            <div className="w-6 h-6 border-2 border-brand-accent-sage border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-xs text-brand-muted uppercase tracking-widest font-medium">Synchronizing with Live Database...</p>
+          </div>
+        )}
 
         {gifts.length === 0 && questions.length === 0 && !isLoading && (
           <div className="mb-12 p-8 bg-brand-surface border border-brand-border rounded-[2rem] flex flex-col md:flex-row justify-between items-center gap-6">
