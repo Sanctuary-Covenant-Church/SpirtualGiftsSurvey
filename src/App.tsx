@@ -72,6 +72,20 @@ export default function App() {
   // Sync Questions & Gifts
   useEffect(() => {
     if (!isFirebaseConfigured) {
+      const localQ = localStorage.getItem('sanctuary_questions');
+      if (localQ) {
+        try {
+          const parsed = JSON.parse(localQ) as Question[];
+          parsed.sort((a, b) => {
+            const orderA = typeof a.order === 'number' ? a.order : (parseInt(a.id, 10) || 0);
+            const orderB = typeof b.order === 'number' ? b.order : (parseInt(b.id, 10) || 0);
+            return orderA - orderB;
+          });
+          setQuestions(parsed);
+        } catch (e) {
+          console.error(e);
+        }
+      }
       setIsDataLoading(false);
       return;
     }
@@ -82,9 +96,15 @@ export default function App() {
       }
     });
 
-    const unsubQuestions = onSnapshot(query(collection(db, 'questions'), orderBy('id', 'asc')), (snapshot) => {
+    const unsubQuestions = onSnapshot(collection(db, 'questions'), (snapshot) => {
       if (!snapshot.empty) {
-        setQuestions(snapshot.docs.map(doc => doc.data() as Question));
+        const loadedQuestions = snapshot.docs.map(doc => doc.data() as Question);
+        loadedQuestions.sort((a, b) => {
+          const orderA = typeof a.order === 'number' ? a.order : (parseInt(a.id, 10) || 0);
+          const orderB = typeof b.order === 'number' ? b.order : (parseInt(b.id, 10) || 0);
+          return orderA - orderB;
+        });
+        setQuestions(loadedQuestions);
       }
       setIsDataLoading(false);
     });

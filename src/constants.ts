@@ -95,39 +95,39 @@ export const INITIAL_GIFTS: Gift[] = [
 
 export const INITIAL_QUESTIONS: Question[] = [
   // Administration
-  { id: '1', text: 'I enjoy organizing tasks and people to reach a goal.', giftId: 'administration' },
-  { id: '2', text: 'I can break down complex projects into simpler steps.', giftId: 'administration' },
+  { id: '1', order: 1, text: 'I enjoy organizing tasks and people to reach a goal.', giftId: 'administration' },
+  { id: '2', order: 2, text: 'I can break down complex projects into simpler steps.', giftId: 'administration' },
   // Discernment
-  { id: '3', text: 'I can often sense when someone is being insincere or dishonest.', giftId: 'discernment' },
-  { id: '4', text: 'I am good at identifying a teaching that is not biblically sound.', giftId: 'discernment' },
+  { id: '3', order: 3, text: 'I can often sense when someone is being insincere or dishonest.', giftId: 'discernment' },
+  { id: '4', order: 4, text: 'I am good at identifying a teaching that is not biblically sound.', giftId: 'discernment' },
   // Encouragement
-  { id: '5', text: 'I find joy in speaking words of hope to people who are struggling.', giftId: 'encouragement' },
-  { id: '6', text: 'People often come to me for advice or comfort.', giftId: 'encouragement' },
+  { id: '5', order: 5, text: 'I find joy in speaking words of hope to people who are struggling.', giftId: 'encouragement' },
+  { id: '6', order: 6, text: 'People often come to me for advice or comfort.', giftId: 'encouragement' },
   // Evangelism
-  { id: '7', text: 'I look for opportunities to share my faith with non-believers.', giftId: 'evangelism' },
-  { id: '8', text: 'I feel a strong burden to tell others about Christ.', giftId: 'evangelism' },
+  { id: '7', order: 7, text: 'I look for opportunities to share my faith with non-believers.', giftId: 'evangelism' },
+  { id: '8', order: 8, text: 'I feel a strong burden to tell others about Christ.', giftId: 'evangelism' },
   // Faith
-  { id: '9', text: 'I have a deep confidence that God will act even in "impossible" situations.', giftId: 'faith' },
-  { id: '10', text: 'I am willing to take big risks for God\'s kingdom.', giftId: 'faith' },
+  { id: '9', order: 9, text: 'I have a deep confidence that God will act even in "impossible" situations.', giftId: 'faith' },
+  { id: '10', order: 10, text: 'I am willing to take big risks for God\'s kingdom.', giftId: 'faith' },
   // Giving
-  { id: '11', text: 'I find it easy to give money or resources away generously.', giftId: 'giving' },
-  { id: '12', text: 'I manage my finances well so I can give more to the church.', giftId: 'giving' },
+  { id: '11', order: 11, text: 'I find it easy to give money or resources away generously.', giftId: 'giving' },
+  { id: '12', order: 12, text: 'I manage my finances well so I can give more to the church.', giftId: 'giving' },
   // Hospitality
-  { id: '13', text: 'I love having people over to my home and making them feel welcome.', giftId: 'hospitality' },
-  { id: '14', text: 'I notice when someone is new or alone and try to make them feel included.', giftId: 'hospitality' },
+  { id: '13', order: 13, text: 'I love having people over to my home and making them feel welcome.', giftId: 'hospitality' },
+  { id: '14', order: 14, text: 'I notice when someone is new or alone and try to make them feel included.', giftId: 'hospitality' },
   // Leadership
-  { id: '15', text: 'I enjoy leading a group toward a common objective.', giftId: 'leadership' },
-  { id: '16', text: 'I am comfortable making decisions that affect other people.', giftId: 'leadership' },
+  { id: '15', order: 15, text: 'I enjoy leading a group toward a common objective.', giftId: 'leadership' },
+  { id: '16', order: 16, text: 'I am comfortable making decisions that affect other people.', giftId: 'leadership' },
   // Mercy
-  { id: '17', text: 'I feel deeply for those who are in pain or distress.', giftId: 'mercy' },
-  { id: '18', text: 'I find it natural to care for those who are often overlooked.', giftId: 'mercy' },
+  { id: '17', order: 17, text: 'I feel deeply for those who are in pain or distress.', giftId: 'mercy' },
+  { id: '18', order: 18, text: 'I find it natural to care for those who are often overlooked.', giftId: 'mercy' },
   // Service
-  { id: '19', text: 'I would rather work behind the scenes than be in the spotlight.', giftId: 'service' },
-  { id: '20', text: 'I find great satisfaction in doing small, practical tasks for others.', giftId: 'service' },
+  { id: '19', order: 19, text: 'I would rather work behind the scenes than be in the spotlight.', giftId: 'service' },
+  { id: '20', order: 20, text: 'I find great satisfaction in doing small, practical tasks for others.', giftId: 'service' },
   // Teaching
-  { id: '21', text: 'I love studying the Bible and sharing what I\'ve learned with others.', giftId: 'teaching' },
-  { id: '22', text: 'I am able to explain complex biblical truths clearly.', giftId: 'teaching' },
+  { id: '21', order: 21, text: 'I love studying the Bible and sharing what I\'ve learned with others.', giftId: 'teaching' },
+  { id: '22', order: 22, text: 'I am able to explain complex biblical truths clearly.', giftId: 'teaching' },
   // Wisdom
-  { id: '23', text: 'I often see the best way forward when others are confused.', giftId: 'wisdom' },
-  { id: '24', text: 'My friends often seek my perspective on difficult life decisions.', giftId: 'wisdom' }
+  { id: '23', order: 23, text: 'I often see the best way forward when others are confused.', giftId: 'wisdom' },
+  { id: '24', order: 24, text: 'My friends often seek my perspective on difficult life decisions.', giftId: 'wisdom' }
 ];

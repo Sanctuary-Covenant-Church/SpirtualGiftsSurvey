@@ -7,6 +7,7 @@ export interface Question {
   id: string;
   text: string;
   giftId: string;
+  order?: number;
 }
 
 export interface Gift {

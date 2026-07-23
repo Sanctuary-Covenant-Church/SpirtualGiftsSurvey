@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
   getDocs, 
@@ -26,7 +26,10 @@ import {
   BarChart3, 
   LogOut,
   ChevronRight,
-  Info
+  Info,
+  ArrowUp,
+  ArrowDown,
+  ListOrdered
 } from 'lucide-react';
 import { db, auth, isFirebaseConfigured, firebaseProjectId, firebaseDatabaseId } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -53,6 +56,16 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const [editingGift, setEditingGift] = useState<Partial<Gift> | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<Partial<Question> | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
+
+  // Compute questions sorted numerically by order or fallback to numeric ID
+  const sortedQuestions = useMemo(() => {
+    return [...questions].sort((a, b) => {
+      const orderA = typeof a.order === 'number' ? a.order : (parseInt(a.id, 10) || 0);
+      const orderB = typeof b.order === 'number' ? b.order : (parseInt(b.id, 10) || 0);
+      return orderA - orderB;
+    });
+  }, [questions]);
 
   function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -120,7 +133,18 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       }
       
       if (localQuestions) {
-        setQuestions(JSON.parse(localQuestions));
+        try {
+          const parsed = JSON.parse(localQuestions) as Question[];
+          parsed.sort((a, b) => {
+            const orderA = typeof a.order === 'number' ? a.order : (parseInt(a.id, 10) || 0);
+            const orderB = typeof b.order === 'number' ? b.order : (parseInt(b.id, 10) || 0);
+            return orderA - orderB;
+          });
+          setQuestions(parsed);
+        } catch (e) {
+          console.error(e);
+          setQuestions(INITIAL_QUESTIONS);
+        }
       } else {
         setQuestions(INITIAL_QUESTIONS);
         localStorage.setItem('sanctuary_questions', JSON.stringify(INITIAL_QUESTIONS));
@@ -134,8 +158,14 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       setIsLoading(false);
     }, (err) => handleFirestoreError(err, OperationType.GET, 'gifts'));
 
-    const unsubQuestions = onSnapshot(query(collection(db, 'questions'), orderBy('id', 'asc')), (snapshot) => {
-      setQuestions(snapshot.docs.map(doc => doc.data() as Question));
+    const unsubQuestions = onSnapshot(collection(db, 'questions'), (snapshot) => {
+      const loaded = snapshot.docs.map(doc => doc.data() as Question);
+      loaded.sort((a, b) => {
+        const orderA = typeof a.order === 'number' ? a.order : (parseInt(a.id, 10) || 0);
+        const orderB = typeof b.order === 'number' ? b.order : (parseInt(b.id, 10) || 0);
+        return orderA - orderB;
+      });
+      setQuestions(loaded);
     }, (err) => handleFirestoreError(err, OperationType.GET, 'questions'));
 
     return () => {
@@ -143,6 +173,57 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       unsubQuestions();
     };
   }, []);
+
+  const moveQuestion = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= sortedQuestions.length) return;
+
+    const listCopy = [...sortedQuestions];
+    const temp = listCopy[index];
+    listCopy[index] = listCopy[targetIndex];
+    listCopy[targetIndex] = temp;
+
+    const updated = listCopy.map((q, i) => ({ ...q, order: i + 1 }));
+
+    setQuestions(updated);
+
+    if (!isFirebaseConfigured) {
+      localStorage.setItem('sanctuary_questions', JSON.stringify(updated));
+      return;
+    }
+
+    setIsReordering(true);
+    try {
+      for (const q of updated) {
+        await setDoc(doc(db, 'questions', q.id), q);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'questions');
+    } finally {
+      setIsReordering(false);
+    }
+  };
+
+  const renumberQuestionsSequentially = async () => {
+    const updated = sortedQuestions.map((q, i) => ({ ...q, order: i + 1 }));
+    setQuestions(updated);
+    if (!isFirebaseConfigured) {
+      localStorage.setItem('sanctuary_questions', JSON.stringify(updated));
+      alert(`Successfully renumbered all ${updated.length} questions sequentially!`);
+      return;
+    }
+    setIsReordering(true);
+    try {
+      for (const q of updated) {
+        await setDoc(doc(db, 'questions', q.id), q);
+      }
+      alert(`Successfully renumbered and saved all ${updated.length} questions to database!`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'questions');
+    } finally {
+      setIsReordering(false);
+    }
+  };
 
   const saveGift = async (gift: Partial<Gift>) => {
     if (!gift.id) return;
@@ -181,18 +262,34 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const saveQuestion = async (q: Partial<Question>) => {
     const id = q.id || Date.now().toString();
+    const existingIndex = sortedQuestions.findIndex(qu => qu.id === id);
+    let targetOrder = q.order;
+    if (typeof targetOrder !== 'number' || isNaN(targetOrder)) {
+      targetOrder = existingIndex >= 0 
+        ? (sortedQuestions[existingIndex].order ?? (existingIndex + 1)) 
+        : (sortedQuestions.length + 1);
+    }
+
+    const questionToSave: Question = {
+      id,
+      text: q.text || '',
+      giftId: q.giftId || gifts[0]?.id || '',
+      order: targetOrder
+    };
+
     if (!isFirebaseConfigured) {
-      const updatedQuestions = questions.map(qu => qu.id === id ? { ...qu, ...q } as Question : qu);
+      let updatedQuestions = questions.map(qu => qu.id === id ? questionToSave : qu);
       if (!questions.some(qu => qu.id === id)) {
-        updatedQuestions.push({ ...q, id } as Question);
+        updatedQuestions.push(questionToSave);
       }
+      updatedQuestions.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setQuestions(updatedQuestions);
       localStorage.setItem('sanctuary_questions', JSON.stringify(updatedQuestions));
       setEditingQuestion(null);
       return;
     }
     try {
-      await setDoc(doc(db, 'questions', id), { ...q, id });
+      await setDoc(doc(db, 'questions', id), questionToSave);
       setEditingQuestion(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `questions/${id}`);
@@ -300,15 +397,35 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
               {activeTab === 'analytics' && 'Operational Insights'}
             </h1>
           </div>
-          {activeTab !== 'analytics' && (
+          {activeTab === 'questions' && (
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={renumberQuestionsSequentially}
+                disabled={isReordering || sortedQuestions.length === 0}
+                title="Normalize order numbers sequentially from 1 to N"
+                className="px-5 py-3 bg-white border border-brand-border text-brand-text rounded-full text-[10px] font-bold uppercase tracking-[0.18em] flex items-center gap-2 hover:bg-brand-surface disabled:opacity-50 transition-all"
+              >
+                <ListOrdered className="w-4 h-4 text-brand-accent-sage" />
+                Renumber 1..{sortedQuestions.length}
+              </button>
+              <button 
+                onClick={() => {
+                  setEditingQuestion({ text: '', giftId: gifts[0]?.id || '', order: sortedQuestions.length + 1 });
+                }}
+                className="px-6 py-3 bg-brand-text text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 hover:bg-black transition-all"
+              >
+                <Plus className="w-4 h-4" /> New Question
+              </button>
+            </div>
+          )}
+          {activeTab === 'gifts' && (
             <button 
               onClick={() => {
-                if (activeTab === 'gifts') setEditingGift({ id: '', name: '', description: '', serviceTeams: [] });
-                else setEditingQuestion({ text: '', giftId: gifts[0]?.id || '' });
+                setEditingGift({ id: '', name: '', description: '', serviceTeams: [] });
               }}
-              className="px-6 py-3 bg-brand-text text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 hover:bg-black"
+              className="px-6 py-3 bg-brand-text text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 hover:bg-black transition-all"
             >
-              <Plus className="w-4 h-4" /> New {activeTab === 'gifts' ? 'Gift' : 'Question'}
+              <Plus className="w-4 h-4" /> New Gift
             </button>
           )}
         </header>
@@ -411,36 +528,82 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         )}
 
         {activeTab === 'questions' && (
-          <div className="bg-white border border-brand-border rounded-[2rem] overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-brand-surface border-b border-brand-border">
-                  <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-brand-muted">ID</th>
-                  <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-brand-muted">Question Prompt</th>
-                  <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-brand-muted">Mapped Gift</th>
-                  <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-brand-muted text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand-border">
-                {questions.map(q => (
-                  <tr key={q.id} className="hover:bg-brand-bg transition-colors">
-                    <td className="px-8 py-5 text-[10px] font-mono text-brand-muted">{q.id}</td>
-                    <td className="px-8 py-5 text-sm font-medium">{q.text}</td>
-                    <td className="px-8 py-5">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-brand-accent-sage">
-                        {gifts.find(g => g.id === q.giftId)?.name || q.giftId}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5 text-right">
-                      <div className="flex justify-end gap-2 text-brand-muted">
-                        <button onClick={() => setEditingQuestion(q)} className="hover:text-brand-text"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={() => deleteQuestion(q.id)} className="hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </td>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-xs text-brand-muted">
+              <span>Use the <strong className="text-brand-text">Up (↑)</strong> and <strong className="text-brand-text">Down (↓)</strong> buttons to easily reorder questions. Survey takers will encounter questions in this exact order.</span>
+              <span className="font-mono text-[10px] font-bold text-brand-accent-sage uppercase">{sortedQuestions.length} Questions Configured</span>
+            </div>
+            <div className="bg-white border border-brand-border rounded-[2rem] overflow-hidden shadow-sm">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-brand-surface border-b border-brand-border">
+                    <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-brand-muted w-20">Order</th>
+                    <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-brand-muted">Question Prompt</th>
+                    <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-brand-muted">Mapped Gift</th>
+                    <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-brand-muted text-center w-36">Move / Sequence</th>
+                    <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-brand-muted text-right w-28">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-brand-border">
+                  {sortedQuestions.map((q, idx) => (
+                    <tr key={q.id} className="hover:bg-brand-bg transition-colors group">
+                      <td className="px-6 py-5">
+                        <span className="inline-flex items-center justify-center text-xs font-mono font-bold text-brand-text bg-brand-surface border border-brand-border px-2.5 py-1 rounded-lg min-w-[36px]">
+                          #{q.order ?? (idx + 1)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-sm font-medium">
+                        <p className="text-brand-text leading-snug">{q.text}</p>
+                        <span className="text-[10px] font-mono text-brand-muted/70 block mt-1">ID: {q.id}</span>
+                      </td>
+                      <td className="px-6 py-5">
+                        <span className="inline-block text-[10px] font-bold uppercase tracking-widest text-brand-accent-sage bg-brand-accent-sage/10 px-3 py-1 rounded-full border border-brand-accent-sage/20 whitespace-nowrap">
+                          {gifts.find(g => g.id === q.giftId)?.name || q.giftId}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => moveQuestion(idx, 'up')}
+                            disabled={idx === 0 || isReordering}
+                            title="Move Question Up"
+                            className="p-2 rounded-xl border border-brand-border bg-white text-brand-text hover:bg-brand-surface hover:text-brand-accent-sage disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-brand-text transition-all shadow-sm active:scale-95"
+                          >
+                            <ArrowUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => moveQuestion(idx, 'down')}
+                            disabled={idx === sortedQuestions.length - 1 || isReordering}
+                            title="Move Question Down"
+                            className="p-2 rounded-xl border border-brand-border bg-white text-brand-text hover:bg-brand-surface hover:text-brand-accent-sage disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-brand-text transition-all shadow-sm active:scale-95"
+                          >
+                            <ArrowDown className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex justify-end gap-1.5 text-brand-muted">
+                          <button 
+                            onClick={() => setEditingQuestion(q)} 
+                            className="p-2 hover:text-brand-text hover:bg-brand-surface rounded-xl transition-all"
+                            title="Edit Question"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => deleteQuestion(q.id)} 
+                            className="p-2 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                            title="Delete Question"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
@@ -534,6 +697,19 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                 >
                   {gifts.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-brand-muted mb-2">Display Order Position</label>
+                <input 
+                  type="number"
+                  min={1}
+                  max={sortedQuestions.length + 1}
+                  value={editingQuestion.order ?? (sortedQuestions.findIndex(q => q.id === editingQuestion.id) + 1 || sortedQuestions.length + 1)}
+                  onChange={e => setEditingQuestion({...editingQuestion, order: parseInt(e.target.value) || 1})}
+                  className="w-full px-4 py-3 rounded-xl border border-brand-border focus:border-brand-text outline-none text-sm font-mono bg-white"
+                  placeholder="Sequence position (e.g. 1)"
+                />
+                <p className="text-[10px] text-brand-muted mt-1">Controls the sequence of questions in the survey (1 = first question).</p>
               </div>
             </div>
             <div className="mt-10 flex gap-4">
