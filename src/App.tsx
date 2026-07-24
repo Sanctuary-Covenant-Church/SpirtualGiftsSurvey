@@ -30,6 +30,7 @@ import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/aut
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import Layout from './components/Layout';
 import AdminDashboard from './components/AdminDashboard';
+import Sanctuary5Hero from './components/Sanctuary5Hero';
 import { db, auth, googleProvider, isFirebaseConfigured } from './lib/firebase';
 import { INITIAL_QUESTIONS, INITIAL_GIFTS } from './constants';
 import { Question, Gift, SurveyResponse, SurveyResult } from './types';
@@ -293,33 +294,8 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="max-w-4xl mx-auto px-6 py-20 sm:py-28 text-center"
           >
-            <span className="text-[11px] font-bold text-brand-red uppercase tracking-[0.3em] mb-6 block">Soul Discovery</span>
-            <h1 className="text-5xl sm:text-7xl font-serif italic mb-8 leading-tight text-brand-text">
-              A path toward <br/>purpose and grace.
-            </h1>
-            <p className="text-lg text-brand-muted mb-12 max-w-xl mx-auto leading-relaxed font-light">
-              Through this guided discovery, you will uncover the unique spiritual gifts bestowed upon you. It is the first step in finding your meaningful place within our Sanctuary Covenant Church community.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button
-                onClick={startSurvey}
-                className="w-full sm:w-auto px-10 py-4.5 bg-brand-red text-white rounded-full text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-red-hover transition-all shadow-lg shadow-brand-red/20 flex items-center justify-center gap-2"
-              >
-                <span>Begin Spiritual Gifts Survey</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <a
-                href="https://sanctuarycov.org/join-a-team/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full sm:w-auto px-8 py-4.5 bg-white border border-brand-border text-brand-text rounded-full text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-surface transition-all flex items-center justify-center gap-2"
-              >
-                <span>Join a Team (sanctuarycov.org)</span>
-                <ExternalLink className="w-3.5 h-3.5 opacity-60" />
-              </a>
-            </div>
+            <Sanctuary5Hero onStartSurvey={startSurvey} />
           </motion.div>
         )}
 
