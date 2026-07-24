@@ -37,7 +37,7 @@ export default function Layout({
       <div className="bg-[#1C1B1A] text-white/90 py-2 px-6 text-[10.5px] uppercase tracking-[0.2em] font-medium flex justify-between items-center border-b border-white/10">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-brand-red inline-block animate-pulse"></span>
-          <span>Sanctuary Covenant Church • Sundays @ 10:00 AM • Minneapolis, MN</span>
+          <span>Sanctuary Covenant Church • Sundays @ 9:00 AM & 11:00 AM • Minneapolis, MN</span>
         </div>
         <div className="hidden sm:flex gap-6 items-center">
           <a 
@@ -180,7 +180,7 @@ export default function Layout({
             </p>
             <div className="pt-2 text-xs text-white/70 space-y-1">
               <p className="font-semibold text-white">710 W 31st St, Minneapolis, MN 55408</p>
-              <p className="text-brand-red font-medium">Sunday Worship Services @ 10:00 AM</p>
+              <p className="text-brand-red font-medium">Sunday Worship Services @ 9:00 AM & 11:00 AM</p>
             </div>
           </div>
 
