@@ -38,9 +38,10 @@ import { trackEvent } from './utils/analytics';
 
 type View = 'hero' | 'survey' | 'results' | 'admin';
 
-const ALLOWED_ADMIN_EMAILS = [
+const DEFAULT_ADMIN_EMAILS = [
   'cdonyi@gmail.com',
-  'sanctuarycovdeveloper@gmail.com'
+  'sanctuarycovdeveloper@gmail.com',
+  'siona@sanctuarycov.org'
 ];
 
 export default function App() {
@@ -53,6 +54,19 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [allowedAdminEmails, setAllowedAdminEmails] = useState<string[]>(DEFAULT_ADMIN_EMAILS);
+
+  // Load configured admin emails from server
+  useEffect(() => {
+    fetch('/api/admin-config')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data.admins) && data.admins.length > 0) {
+          setAllowedAdminEmails(data.admins);
+        }
+      })
+      .catch(err => console.error('Failed to load admin configuration:', err));
+  }, [view]);
   
   // Dynamic content from Firestore
   const [questions, setQuestions] = useState<Question[]>(INITIAL_QUESTIONS);
@@ -266,14 +280,20 @@ export default function App() {
   const progress = (currentQuestionIndex / questions.length) * 100;
 
   if (view === 'admin') {
-    // Basic reactive security check before rendering the potentially heavy dashboard
-    if (!user?.email || !ALLOWED_ADMIN_EMAILS.includes(user.email)) {
+    // Check if current user is in authorized admin email list
+    const userEmailLower = user?.email?.toLowerCase();
+    const isAuthorizedAdmin = userEmailLower && allowedAdminEmails.some(a => a.toLowerCase() === userEmailLower);
+
+    if (!isAuthorizedAdmin) {
       return (
         <div className="h-screen flex items-center justify-center bg-brand-bg flex-col gap-6 p-6 text-center">
           <ShieldAlert className="w-12 h-12 text-red-500" />
           <h2 className="text-2xl font-serif italic text-brand-text">Unauthorized Access</h2>
           <p className="text-xs text-brand-muted max-w-md leading-relaxed">
-            You are logged in as <span className="font-bold text-brand-text">{user?.email || 'unknown'}</span>, which is not an authorized administrator.
+            You are logged in as <span className="font-bold text-brand-text">{user?.email || 'unknown'}</span>, which is not in the list of authorized administrators.
+          </p>
+          <p className="text-[11px] text-brand-muted/80 max-w-md leading-relaxed">
+            To gain access, please ask an existing administrator to add your email address in the Admin Access settings.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 mt-2">
             <button 

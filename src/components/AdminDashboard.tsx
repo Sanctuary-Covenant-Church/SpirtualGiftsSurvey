@@ -33,7 +33,10 @@ import {
   Mail,
   Send,
   Check,
-  AtSign
+  AtSign,
+  ShieldCheck,
+  UserCheck,
+  Shield
 } from 'lucide-react';
 import { db, auth, isFirebaseConfigured, firebaseProjectId, firebaseDatabaseId } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -50,14 +53,14 @@ enum OperationType {
 }
 
 export default function AdminDashboard({ onExit }: { onExit: () => void }) {
-  const [activeTab, setActiveTab] = useState<'gifts' | 'questions' | 'analytics' | 'emails'>('gifts');
+  const [activeTab, setActiveTab] = useState<'gifts' | 'questions' | 'analytics' | 'emails' | 'admins'>('gifts');
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   // Email settings states
-  const [emailRecipients, setEmailRecipients] = useState<string[]>(['cdonyi@gmail.com', 'leadership@sanctuarycov.org']);
+  const [emailRecipients, setEmailRecipients] = useState<string[]>(['cdonyi@gmail.com', 'siona@sanctuarycov.org']);
   const [newEmailInput, setNewEmailInput] = useState('');
   const [emailServerStatus, setEmailServerStatus] = useState<EmailServerStatus | null>(null);
   const [isSavingEmails, setIsSavingEmails] = useState(false);
@@ -65,6 +68,12 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [isTestingEmail, setIsTestingEmail] = useState(false);
   const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
+
+  // Admin users configuration states
+  const [adminEmails, setAdminEmails] = useState<string[]>(['cdonyi@gmail.com', 'sanctuarycovdeveloper@gmail.com', 'siona@sanctuarycov.org']);
+  const [newAdminInput, setNewAdminInput] = useState('');
+  const [isSavingAdmins, setIsSavingAdmins] = useState(false);
+  const [adminSaveSuccess, setAdminSaveSuccess] = useState(false);
 
   // Form states
   const [editingGift, setEditingGift] = useState<Partial<Gift> | null>(null);
@@ -88,9 +97,75 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     }
   };
 
+  // Load admin configuration from server
+  const loadAdminConfig = async () => {
+    try {
+      const res = await fetch('/api/admin-config');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.admins)) {
+          setAdminEmails(data.admins);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin config:', err);
+    }
+  };
+
   useEffect(() => {
     loadEmailConfig();
+    loadAdminConfig();
   }, []);
+
+  const handleAddAdmin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newAdminInput.trim().toLowerCase();
+    if (!clean || !clean.includes('@')) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+    if (adminEmails.map(a => a.toLowerCase()).includes(clean)) {
+      alert('Email address is already in the administrator list.');
+      return;
+    }
+    setAdminEmails([...adminEmails, clean]);
+    setNewAdminInput('');
+  };
+
+  const handleRemoveAdmin = (emailToRemove: string) => {
+    if (adminEmails.length <= 1) {
+      alert('Cannot remove the last administrator. At least one admin email address must remain.');
+      return;
+    }
+    setAdminEmails(adminEmails.filter(e => e.toLowerCase() !== emailToRemove.toLowerCase()));
+  };
+
+  const handleSaveAdmins = async () => {
+    if (adminEmails.length === 0) {
+      alert('At least one administrator email address is required.');
+      return;
+    }
+    setIsSavingAdmins(true);
+    setAdminSaveSuccess(false);
+    try {
+      const res = await fetch('/api/admin-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admins: adminEmails })
+      });
+      if (res.ok) {
+        setAdminSaveSuccess(true);
+        setTimeout(() => setAdminSaveSuccess(false), 4000);
+      } else {
+        const data = await res.json();
+        alert(`Failed to save admin list: ${data.error || 'Server error'}`);
+      }
+    } catch (err) {
+      alert('Failed to save admin list.');
+    } finally {
+      setIsSavingAdmins(false);
+    }
+  };
 
   const handleAddRecipient = (e: React.FormEvent) => {
     e.preventDefault();
@@ -440,6 +515,12 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${activeTab === 'emails' ? 'bg-brand-surface text-brand-text font-bold text-brand-red' : 'text-brand-muted hover:bg-brand-bg'}`}
           >
             <Mail className="w-4 h-4" /> Email Notifications
+          </button>
+          <button 
+            onClick={() => setActiveTab('admins')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${activeTab === 'admins' ? 'bg-brand-surface text-brand-text font-bold text-brand-accent-gold' : 'text-brand-muted hover:bg-brand-bg'}`}
+          >
+            <ShieldCheck className="w-4 h-4" /> Admin Access
           </button>
         </nav>
         <div className="p-4 border-t border-brand-border bg-brand-surface/20">
@@ -875,6 +956,123 @@ SENDGRID_API_KEY="SG.123456789..."
 EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
                   </pre>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ADMIN ACCESS MANAGEMENT TAB */}
+        {activeTab === 'admins' && (
+          <div className="space-y-8 max-w-4xl">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="p-2 bg-brand-accent-gold/10 text-brand-accent-gold rounded-xl">
+                  <ShieldCheck className="w-5 h-5" />
+                </span>
+                <h3 className="text-2xl font-serif italic text-brand-text">Admin Users & Access Control</h3>
+              </div>
+              <p className="text-xs text-brand-muted leading-relaxed font-light">
+                Configure which Google accounts are authorized to access this Curator Admin Dashboard. Anyone attempting to log in with Google Authentication whose email address is not in this list will be blocked.
+              </p>
+            </div>
+
+            {/* Admin Emails List & Form Card */}
+            <div className="bg-white border border-brand-border rounded-[2.5rem] p-8 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-brand-border">
+                <div>
+                  <h4 className="text-sm font-bold uppercase tracking-wider text-brand-text">Authorized Administrator Email Addresses</h4>
+                  <p className="text-xs text-brand-muted mt-0.5">Users signing in with Google accounts matching these email addresses gain access to this dashboard.</p>
+                </div>
+                <button
+                  onClick={handleSaveAdmins}
+                  disabled={isSavingAdmins}
+                  className="px-6 py-3 bg-brand-accent-gold text-brand-text font-bold text-[10px] uppercase tracking-[0.2em] rounded-full hover:bg-opacity-90 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                >
+                  {adminSaveSuccess ? (
+                    <>
+                      <Check className="w-4 h-4" /> Admin List Saved!
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" /> Save Admin List
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Add New Admin Form */}
+              <form onSubmit={handleAddAdmin} className="flex gap-3 mb-6">
+                <div className="relative flex-1">
+                  <AtSign className="w-4 h-4 text-brand-muted absolute left-4 top-3.5" />
+                  <input
+                    type="email"
+                    value={newAdminInput}
+                    onChange={e => setNewAdminInput(e.target.value)}
+                    placeholder="Add new admin email (e.g. pastor@sanctuarycov.org)"
+                    className="w-full pl-11 pr-4 py-3 bg-brand-surface/50 border border-brand-border rounded-xl text-xs outline-none focus:border-brand-text font-mono"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-brand-text text-white text-[10px] font-bold uppercase tracking-[0.18em] rounded-xl hover:bg-black transition-all flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" /> Add Admin
+                </button>
+              </form>
+
+              {/* List of Admins */}
+              <div className="space-y-3">
+                {adminEmails.map(adminEmail => {
+                  const isCurrentUser = auth?.currentUser?.email?.toLowerCase() === adminEmail.toLowerCase();
+                  return (
+                    <div key={adminEmail} className="flex items-center justify-between p-4 bg-brand-surface/40 border border-brand-border/60 rounded-2xl group hover:bg-white hover:border-brand-border transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-brand-accent-gold/10 text-brand-accent-gold flex items-center justify-center text-xs font-bold">
+                          <UserCheck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-brand-text font-mono">{adminEmail}</span>
+                            {isCurrentUser && (
+                              <span className="px-2 py-0.5 bg-brand-accent-sage/20 text-brand-accent-sage text-[9px] font-bold uppercase tracking-wider rounded-full border border-brand-accent-sage/30">
+                                Current Session
+                              </span>
+                            )}
+                          </div>
+                          <span className="block text-[9px] uppercase tracking-wider text-brand-muted font-bold">Curator Administrator</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveAdmin(adminEmail)}
+                        className="p-2 text-brand-muted hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                        title="Remove Administrator"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+                {adminEmails.length === 0 && (
+                  <div className="p-8 text-center bg-brand-surface/20 rounded-2xl border border-dashed border-brand-border text-xs text-brand-muted">
+                    No administrator email addresses configured. Click "Add Admin" above to add access.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Explanation Card */}
+            <div className="bg-brand-surface rounded-[2.5rem] p-8 border border-brand-border">
+              <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-accent-gold mb-3">How Admin Access Authorization Works</h4>
+              <div className="space-y-3 text-xs text-brand-muted leading-relaxed">
+                <p>
+                  • <strong>Google Authentication Check:</strong> When a user clicks "Curator Admin Login", they sign in with their Google account.
+                </p>
+                <p>
+                  • <strong>Dynamic Access Control:</strong> The app checks their authenticated Google email against this exact configured list. If matched, access is granted to manage spiritual gifts, questions, email settings, and administrators.
+                </p>
+                <p>
+                  • <strong>Persistence:</strong> Changes made here are saved to the server configuration (<code>data/admins.json</code>) so updated administrator privileges persist across sessions and deployments.
+                </p>
               </div>
             </div>
           </div>

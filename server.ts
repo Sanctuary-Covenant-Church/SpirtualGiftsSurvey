@@ -12,6 +12,7 @@ import { generateResultsEmailHtml, SurveyEmailPayload } from "./src/lib/emailTem
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const RECIPIENTS_FILE = path.join(DATA_DIR, "recipients.json");
+const ADMINS_FILE = path.join(DATA_DIR, "admins.json");
 
 // Helper to ensure data directory exists
 function ensureDataDir() {
@@ -35,7 +36,7 @@ function getStoredRecipients(): string[] {
     console.error("Failed to load recipients file:", err);
   }
   // Default fallback list
-  return ["cdonyi@gmail.com", "leadership@sanctuarycov.org"];
+  return ["cdonyi@gmail.com", "siona@sanctuarycov.org"];
 }
 
 // Save recipient emails
@@ -43,6 +44,32 @@ function saveStoredRecipients(recipients: string[]) {
   ensureDataDir();
   const clean = Array.from(new Set(recipients.map(e => e.trim().toLowerCase()))).filter(Boolean);
   fs.writeFileSync(RECIPIENTS_FILE, JSON.stringify({ recipients: clean, lastUpdated: new Date().toISOString() }, null, 2));
+  return clean;
+}
+
+// Load authorized admin emails
+function getStoredAdmins(): string[] {
+  try {
+    ensureDataDir();
+    if (fs.existsSync(ADMINS_FILE)) {
+      const raw = fs.readFileSync(ADMINS_FILE, "utf8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.admins) && parsed.admins.length > 0) {
+        return parsed.admins;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load admins file:", err);
+  }
+  // Default fallback list
+  return ["cdonyi@gmail.com", "sanctuarycovdeveloper@gmail.com", "siona@sanctuarycov.org"];
+}
+
+// Save authorized admin emails
+function saveStoredAdmins(admins: string[]) {
+  ensureDataDir();
+  const clean = Array.from(new Set(admins.map(e => e.trim().toLowerCase()))).filter(Boolean);
+  fs.writeFileSync(ADMINS_FILE, JSON.stringify({ admins: clean, lastUpdated: new Date().toISOString() }, null, 2));
   return clean;
 }
 
@@ -106,6 +133,25 @@ async function startServer() {
     }
     const updated = saveStoredRecipients(recipients);
     res.json({ success: true, recipients: updated });
+  });
+
+  // GET /api/admin-config
+  app.get("/api/admin-config", (req, res) => {
+    const admins = getStoredAdmins();
+    res.json({ admins });
+  });
+
+  // POST /api/admin-config
+  app.post("/api/admin-config", (req, res) => {
+    const { admins } = req.body;
+    if (!Array.isArray(admins)) {
+      return res.status(400).json({ error: "Admins must be an array of email strings." });
+    }
+    if (admins.length === 0) {
+      return res.status(400).json({ error: "Admin list cannot be empty. At least one administrator email is required." });
+    }
+    const updated = saveStoredAdmins(admins);
+    res.json({ success: true, admins: updated });
   });
 
   // POST /api/send-results
