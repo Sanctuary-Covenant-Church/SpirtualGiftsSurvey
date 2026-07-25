@@ -33,7 +33,7 @@ import AdminDashboard from './components/AdminDashboard';
 import Sanctuary5Hero from './components/Sanctuary5Hero';
 import { db, auth, googleProvider, isFirebaseConfigured } from './lib/firebase';
 import { INITIAL_QUESTIONS, INITIAL_GIFTS } from './constants';
-import { Question, Gift, SurveyResponse, SurveyResult } from './types';
+import { Question, Gift, SurveyResponse, SurveyResult, GiftMatch, MinistryMatch } from './types';
 import { trackEvent } from './utils/analytics';
 
 type View = 'hero' | 'survey' | 'results' | 'admin';
@@ -178,14 +178,50 @@ export default function App() {
     });
 
     const sortedGifts = [...gifts].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
-    const topGifts = sortedGifts.slice(0, 3).filter(g => (scores[g.id] || 0) > 0);
+    
+    // Top 5 Gift Matches
+    const topGiftsList: GiftMatch[] = sortedGifts.slice(0, 5).map(g => {
+      const qCount = questions.filter(q => q.giftId === g.id).length;
+      return {
+        giftId: g.id,
+        name: g.name,
+        score: scores[g.id] || 0,
+        maxScore: qCount * 5 || 10,
+        description: g.description,
+        scripture: g.scripture,
+        serviceTeams: g.serviceTeams || []
+      };
+    });
+
+    // Top 5 Ministry Matches derived from top gifts
+    const ministryMatches: MinistryMatch[] = [];
+    const seenTeams = new Set<string>();
+
+    for (const gMatch of topGiftsList) {
+      if (gMatch.serviceTeams) {
+        for (const team of gMatch.serviceTeams) {
+          if (!seenTeams.has(team)) {
+            seenTeams.add(team);
+            ministryMatches.push({
+              teamName: team,
+              giftId: gMatch.giftId,
+              giftName: gMatch.name
+            });
+            if (ministryMatches.length >= 5) break;
+          }
+        }
+      }
+      if (ministryMatches.length >= 5) break;
+    }
 
     return {
       userId: Math.random().toString(36).substring(7),
       timestamp: new Date().toISOString(),
       responses: finalResponses,
       scores,
-      primaryGiftIds: topGifts.map(g => g.id),
+      primaryGiftIds: topGiftsList.map(g => g.giftId),
+      topGifts: topGiftsList,
+      topMinistryMatches: ministryMatches,
       ...userInfo
     };
   };
@@ -197,11 +233,19 @@ export default function App() {
       if (result) {
         const finalResult = { ...result, ...userInfo };
         setResult(finalResult);
+
         await fetch('/api/send-results', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: userInfo.email, result: finalResult })
+          body: JSON.stringify({
+            name: userInfo.name,
+            email: userInfo.email,
+            topGifts: finalResult.topGifts || [],
+            topMinistryMatches: finalResult.topMinistryMatches || [],
+            timestamp: finalResult.timestamp
+          })
         });
+
         trackEvent('survey_complete', { topGifts: finalResult.primaryGiftIds });
         setView('results');
       }
@@ -418,36 +462,84 @@ export default function App() {
                 <h2 className="text-5xl sm:text-6xl font-serif italic mb-8 leading-tight">Welcome to your <br/>ministry, {userInfo.name}.</h2>
                 
                 <div className="space-y-12 max-w-2xl">
-                  {result.primaryGiftIds.length > 0 && (
+                  {result.topGifts && result.topGifts.length > 0 && (
                     <p className="text-lg text-brand-muted leading-relaxed font-light">
-                      Based on your responses, your primary spiritual gift is <span className="text-brand-text font-semibold italic">{gifts.find(g => g.id === result.primaryGiftIds[0])?.name}</span>. You have a unique, God-given ability that ripples through the lives of those you serve.
+                      Based on your responses, your primary spiritual gift is <span className="text-brand-text font-semibold italic">{result.topGifts[0].name}</span>. You have a unique, God-given ability that ripples through the lives of those you serve.
                     </p>
                   )}
 
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    {result.primaryGiftIds.map((id, idx) => {
-                      const gift = gifts.find(g => g.id === id);
-                      if (!gift) return null;
-                      return (
-                        <div key={gift.id} className="p-8 bg-white border border-brand-border rounded-[2rem] hover:border-brand-red transition-all group">
-                          <div className="text-[9px] uppercase tracking-widest text-brand-red mb-3 font-bold">{idx === 0 ? 'Primary' : 'Secondary'} Gift</div>
-                          <div className="text-2xl font-serif italic mb-2 group-hover:text-brand-red transition-colors">{gift.name}</div>
-                          <p className="text-xs text-brand-muted leading-relaxed line-clamp-3 mb-4">{gift.description}</p>
-                          <div className="h-[2px] w-full bg-brand-surface mt-4 overflow-hidden rounded-full">
+                  {/* Top 5 Spiritual Gifts Section */}
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-brand-red mb-6">
+                      Top 5 Spiritual Gifts Matches
+                    </h3>
+                    <div className="space-y-4">
+                      {result.topGifts ? result.topGifts.slice(0, 5).map((gMatch, idx) => (
+                        <div key={gMatch.giftId} className="p-6 bg-white border border-brand-border rounded-[1.8rem] hover:border-brand-red/40 transition-all group shadow-2xs">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={`text-[9px] uppercase tracking-widest font-bold px-3 py-1 rounded-full ${idx === 0 ? 'bg-brand-red text-white' : idx === 1 ? 'bg-brand-accent-gold/20 text-brand-accent-gold border border-brand-accent-gold/30' : 'bg-brand-surface text-brand-muted'}`}>
+                              #{idx + 1} {idx === 0 ? 'Primary Gift' : idx === 1 ? 'Secondary Gift' : 'Gift Match'}
+                            </span>
+                            <span className="text-xs font-mono font-bold text-brand-text bg-brand-surface px-2.5 py-1 rounded-lg">
+                              {gMatch.score} / {gMatch.maxScore} pts
+                            </span>
+                          </div>
+                          <div className="text-xl font-serif italic mb-1 text-brand-text group-hover:text-brand-red transition-colors">
+                            {gMatch.name}
+                          </div>
+                          {gMatch.scripture && (
+                            <div className="text-[11px] text-brand-red font-serif italic mb-2">
+                              {gMatch.scripture}
+                            </div>
+                          )}
+                          <p className="text-xs text-brand-muted leading-relaxed mb-3 font-light">
+                            {gMatch.description}
+                          </p>
+                          <div className="h-[3px] w-full bg-brand-surface overflow-hidden rounded-full">
                             <motion.div 
                               className={`h-full ${idx === 0 ? 'bg-brand-red' : 'bg-brand-accent-gold'}`} 
                               initial={{ width: 0 }}
-                              animate={{ width: `${(result.scores[id] / 10) * 100}%` }}
+                              animate={{ width: `${Math.min(100, Math.max(10, (gMatch.score / (gMatch.maxScore || 10)) * 100))}%` }}
+                              transition={{ duration: 0.8, delay: idx * 0.1 }}
                             />
                           </div>
                         </div>
-                      );
-                    })}
+                      )) : null}
+                    </div>
                   </div>
 
+                  {/* Top 5 Ministry Matches Section */}
+                  {result.topMinistryMatches && result.topMinistryMatches.length > 0 && (
+                    <div className="pt-4 border-t border-brand-border">
+                      <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-brand-accent-gold mb-4">
+                        Top 5 Recommended Ministry Teams
+                      </h3>
+                      <p className="text-xs text-brand-muted mb-6 font-light">
+                        Based on your top spiritual gifts, here are 5 ministry areas at Sanctuary Covenant Church where you can flourish:
+                      </p>
+                      <div className="grid gap-3">
+                        {result.topMinistryMatches.slice(0, 5).map((mMatch, idx) => (
+                          <div key={mMatch.teamName} className="p-4 bg-brand-surface/60 border border-brand-border rounded-2xl flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="w-6 h-6 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-[10px] font-bold">
+                                {idx + 1}
+                              </span>
+                              <span className="text-sm font-serif italic font-bold text-brand-text">
+                                {mMatch.teamName}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-medium text-brand-muted bg-white px-3 py-1 rounded-full border border-brand-border">
+                              Aligned with {mMatch.giftName}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-4 text-[11px] text-brand-muted uppercase tracking-widest font-medium border-t border-brand-border pt-8">
-                    <Mail className="w-4 h-4 opacity-50" />
-                    <span>A detailed summary has been sent to {userInfo.email}</span>
+                    <Mail className="w-4 h-4 text-brand-red shrink-0" />
+                    <span>A detailed report (Top 5 Gifts & Top 5 Ministry Matches) has been emailed to <strong className="text-brand-text font-bold">{userInfo.email}</strong> and church leadership.</span>
                   </div>
                 </div>
               </div>

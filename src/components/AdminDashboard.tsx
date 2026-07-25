@@ -29,11 +29,15 @@ import {
   Info,
   ArrowUp,
   ArrowDown,
-  ListOrdered
+  ListOrdered,
+  Mail,
+  Send,
+  Check,
+  AtSign
 } from 'lucide-react';
 import { db, auth, isFirebaseConfigured, firebaseProjectId, firebaseDatabaseId } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
-import { Gift, Question } from '../types';
+import { Gift, Question, EmailServerStatus } from '../types';
 import { INITIAL_GIFTS, INITIAL_QUESTIONS } from '../constants';
 
 enum OperationType {
@@ -46,17 +50,110 @@ enum OperationType {
 }
 
 export default function AdminDashboard({ onExit }: { onExit: () => void }) {
-  const [activeTab, setActiveTab] = useState<'gifts' | 'questions' | 'analytics'>('gifts');
+  const [activeTab, setActiveTab] = useState<'gifts' | 'questions' | 'analytics' | 'emails'>('gifts');
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
+  // Email settings states
+  const [emailRecipients, setEmailRecipients] = useState<string[]>(['cdonyi@gmail.com', 'leadership@sanctuarycov.org']);
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [emailServerStatus, setEmailServerStatus] = useState<EmailServerStatus | null>(null);
+  const [isSavingEmails, setIsSavingEmails] = useState(false);
+  const [emailSaveSuccess, setEmailSaveSuccess] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState('');
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
+
   // Form states
   const [editingGift, setEditingGift] = useState<Partial<Gift> | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<Partial<Question> | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
+
+  // Load email configuration from server
+  const loadEmailConfig = async () => {
+    try {
+      const res = await fetch('/api/email-config');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.recipients)) {
+          setEmailRecipients(data.recipients);
+        }
+        setEmailServerStatus(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch email config:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadEmailConfig();
+  }, []);
+
+  const handleAddRecipient = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newEmailInput.trim().toLowerCase();
+    if (!clean || !clean.includes('@')) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+    if (emailRecipients.includes(clean)) {
+      alert('Email address is already in the recipient list.');
+      return;
+    }
+    setEmailRecipients([...emailRecipients, clean]);
+    setNewEmailInput('');
+  };
+
+  const handleRemoveRecipient = (emailToRemove: string) => {
+    setEmailRecipients(emailRecipients.filter(e => e !== emailToRemove));
+  };
+
+  const handleSaveRecipients = async () => {
+    setIsSavingEmails(true);
+    setEmailSaveSuccess(false);
+    try {
+      const res = await fetch('/api/email-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipients: emailRecipients })
+      });
+      if (res.ok) {
+        setEmailSaveSuccess(true);
+        setTimeout(() => setEmailSaveSuccess(false), 4000);
+      }
+    } catch (err) {
+      alert('Failed to save email recipient list.');
+    } finally {
+      setIsSavingEmails(false);
+    }
+  };
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = testEmailAddress.trim() || emailRecipients[0] || 'cdonyi@gmail.com';
+    setIsTestingEmail(true);
+    setTestEmailResult(null);
+    try {
+      const res = await fetch('/api/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetEmail: target })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTestEmailResult(`Success (${data.mode}): ${data.message}`);
+      } else {
+        setTestEmailResult(`Error: ${data.error || 'Failed to send test email.'}`);
+      }
+    } catch (err: any) {
+      setTestEmailResult(`Error: ${err.message || 'Connection failed'}`);
+    } finally {
+      setIsTestingEmail(false);
+    }
+  };
 
   // Compute questions sorted numerically by order or fallback to numeric ID
   const sortedQuestions = useMemo(() => {
@@ -338,6 +435,12 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
           >
             <BarChart3 className="w-4 h-4" /> Analytics
           </button>
+          <button 
+            onClick={() => setActiveTab('emails')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${activeTab === 'emails' ? 'bg-brand-surface text-brand-text font-bold text-brand-red' : 'text-brand-muted hover:bg-brand-bg'}`}
+          >
+            <Mail className="w-4 h-4" /> Email Notifications
+          </button>
         </nav>
         <div className="p-4 border-t border-brand-border bg-brand-surface/20">
           <div className="px-3 py-2.5 rounded-xl border border-brand-border bg-white text-[9px] leading-relaxed mb-3">
@@ -395,6 +498,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
               {activeTab === 'gifts' && 'Spiritual Gifts Library'}
               {activeTab === 'questions' && 'Survey Question Pool'}
               {activeTab === 'analytics' && 'Operational Insights'}
+              {activeTab === 'emails' && 'Email Notifications & Recipients'}
             </h1>
           </div>
           {activeTab === 'questions' && (
@@ -614,6 +718,165 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             <p className="text-sm text-brand-muted max-w-sm mx-auto leading-relaxed">
               Real-time conversion data and gift distribution patterns are being collected. Full visualization suite coming to next iteration.
             </p>
+          </div>
+        )}
+
+        {activeTab === 'emails' && (
+          <div className="space-y-10 max-w-5xl">
+            {/* Status Card */}
+            <div className="bg-white border border-brand-border rounded-[2.5rem] p-8 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-brand-border/60">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-brand-red inline-block animate-pulse"></span>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-red">Automated Delivery System</span>
+                  </div>
+                  <h3 className="text-2xl font-serif italic text-brand-text">Survey Results Routing</h3>
+                  <p className="text-xs text-brand-muted mt-1 leading-relaxed">
+                    Whenever a participant completes the Soul Discovery survey, a full report (Top 5 Gifts & Top 5 Ministry Matches) is emailed to the participant and all notification addresses below.
+                  </p>
+                </div>
+                <div className="p-4 bg-brand-surface rounded-2xl border border-brand-border shrink-0 min-w-[200px]">
+                  <div className="text-[9px] uppercase tracking-wider font-bold text-brand-muted mb-1">Delivery Provider</div>
+                  <div className="text-sm font-bold text-brand-text">{emailServerStatus?.provider || 'Demo / Simulated Mode'}</div>
+                  <div className="text-[10px] text-brand-accent-sage mt-1 font-medium">From: {emailServerStatus?.from || 'Sanctuary Covenant Church'}</div>
+                </div>
+              </div>
+
+              {/* Recipient Management */}
+              <div className="pt-8">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-brand-text">Configured Recipient Email Addresses</h4>
+                    <p className="text-xs text-brand-muted mt-0.5">These staff / ministry leader addresses receive a copy of every completed survey.</p>
+                  </div>
+                  <button
+                    onClick={handleSaveRecipients}
+                    disabled={isSavingEmails}
+                    className="px-6 py-3 bg-brand-red text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-full hover:bg-brand-red-hover transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                  >
+                    {emailSaveSuccess ? (
+                      <>
+                        <Check className="w-4 h-4" /> Saved!
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" /> Save Email List
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Add New Recipient Form */}
+                <form onSubmit={handleAddRecipient} className="flex gap-3 mb-6">
+                  <div className="relative flex-1">
+                    <AtSign className="w-4 h-4 text-brand-muted absolute left-4 top-3.5" />
+                    <input
+                      type="email"
+                      value={newEmailInput}
+                      onChange={e => setNewEmailInput(e.target.value)}
+                      placeholder="Add leader email (e.g. pastor@sanctuarycov.org)"
+                      className="w-full pl-11 pr-4 py-3 bg-brand-surface/50 border border-brand-border rounded-xl text-xs outline-none focus:border-brand-text"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="px-6 py-3 bg-brand-text text-white text-[10px] font-bold uppercase tracking-[0.18em] rounded-xl hover:bg-black transition-all flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> Add Email
+                  </button>
+                </form>
+
+                {/* List of Recipients */}
+                <div className="space-y-3">
+                  {emailRecipients.map(email => (
+                    <div key={email} className="flex items-center justify-between p-4 bg-brand-surface/40 border border-brand-border/60 rounded-2xl group hover:bg-white hover:border-brand-border transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-xs font-bold">
+                          <Mail className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="text-sm font-semibold text-brand-text font-mono">{email}</span>
+                          <span className="block text-[9px] uppercase tracking-wider text-brand-muted font-bold">Notification Recipient</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveRecipient(email)}
+                        className="p-2 text-brand-muted hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                        title="Remove Recipient"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {emailRecipients.length === 0 && (
+                    <div className="p-8 text-center bg-brand-surface/20 rounded-2xl border border-dashed border-brand-border text-xs text-brand-muted">
+                      No notification email addresses configured. Click "Add Email" above to add leadership contacts.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Test Email Delivery Section */}
+            <div className="bg-white border border-brand-border rounded-[2.5rem] p-8 shadow-xs">
+              <h3 className="text-xl font-serif italic text-brand-text mb-2">Test Email Generator</h3>
+              <p className="text-xs text-brand-muted mb-6 leading-relaxed">
+                Send a sample Top 5 Gifts & Top 5 Ministry Matches report to verify email delivery.
+              </p>
+              <form onSubmit={handleSendTestEmail} className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="email"
+                  value={testEmailAddress}
+                  onChange={e => setTestEmailAddress(e.target.value)}
+                  placeholder={`Send test email to (default: ${emailRecipients[0] || 'your email'})`}
+                  className="flex-1 px-4 py-3 bg-brand-surface/50 border border-brand-border rounded-xl text-xs outline-none focus:border-brand-text"
+                />
+                <button
+                  type="submit"
+                  disabled={isTestingEmail}
+                  className="px-8 py-3 bg-brand-text text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Send className="w-4 h-4" />
+                  {isTestingEmail ? 'Sending...' : 'Send Sample Report'}
+                </button>
+              </form>
+              {testEmailResult && (
+                <div className="mt-4 p-4 bg-brand-surface rounded-xl border border-brand-border font-mono text-xs text-brand-text leading-relaxed">
+                  {testEmailResult}
+                </div>
+              )}
+            </div>
+
+            {/* Setup & Integration Instructions */}
+            <div className="bg-brand-surface rounded-[2.5rem] p-8 border border-brand-border">
+              <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-accent-gold mb-3">Sending Real Emails Automatically</h4>
+              <p className="text-xs text-brand-muted leading-relaxed mb-4">
+                This applet uses an Express backend API route (<code>/api/send-results</code>) with Nodemailer. You can automatically dispatch emails through any SMTP server or API service by setting environment variables in your deployment environment:
+              </p>
+
+              <div className="grid md:grid-cols-2 gap-4 text-xs">
+                <div className="p-4 bg-white rounded-2xl border border-brand-border">
+                  <span className="font-bold text-brand-text block mb-1">Option 1: Standard SMTP (Gmail, Microsoft 365, Amazon SES)</span>
+                  <pre className="text-[10px] font-mono text-brand-muted bg-brand-surface p-3 rounded-xl overflow-x-auto">
+{`SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_USER="pastor@sanctuarycov.org"
+SMTP_PASS="app-password-here"
+EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
+                  </pre>
+                </div>
+                <div className="p-4 bg-white rounded-2xl border border-brand-border">
+                  <span className="font-bold text-brand-text block mb-1">Option 2: Modern Email APIs (Resend / SendGrid)</span>
+                  <pre className="text-[10px] font-mono text-brand-muted bg-brand-surface p-3 rounded-xl overflow-x-auto">
+{`RESEND_API_KEY="re_123456789..."
+# OR
+SENDGRID_API_KEY="SG.123456789..."
+EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
+                  </pre>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>

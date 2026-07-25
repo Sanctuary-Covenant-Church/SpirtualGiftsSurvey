@@ -28,14 +28,45 @@ export interface SurveyResponse {
   score: number; // 1-5
 }
 
+export interface GiftMatch {
+  giftId: string;
+  name: string;
+  score: number;
+  maxScore: number;
+  description: string;
+  scripture?: string;
+  serviceTeams?: string[];
+}
+
+export interface MinistryMatch {
+  teamName: string;
+  giftId: string;
+  giftName: string;
+}
+
 export interface SurveyResult {
   userId: string;
   timestamp: string;
   responses: SurveyResponse[];
   scores: Record<string, number>;
   primaryGiftIds: string[];
+  topGifts?: GiftMatch[];
+  topMinistryMatches?: MinistryMatch[];
   email?: string;
   name?: string;
+}
+
+export interface EmailRecipientConfig {
+  recipients: string[];
+  lastUpdated?: string;
+}
+
+export interface EmailServerStatus {
+  configured: boolean;
+  provider: string;
+  from: string;
+  smtpHost?: string;
+  activeRecipients: string[];
 }
 
 export interface AnalyticsEvent {

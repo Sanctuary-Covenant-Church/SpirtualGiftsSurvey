@@ -52,6 +52,9 @@ To access the admin dashboard:
 2. Login with the authorized Google account.
 3. You can now add/edit/delete questions and gifts in real-time. Changes are reflected instantly for users via Firestore's `onSnapshot` listeners.
 
+## 🌐 Custom Subdomain & Deployment Strategy
+For complete step-by-step instructions on setting up `app.sanctuarycov.org` on GoDaddy, mapping it to Netlify (`sccspiritualgiftssurvey.netlify.app`), and authenticating domain records in Resend for email notifications, see **[SANCTUARY_REACT_DEPLOYMENT_STRATEGY.md](./SANCTUARY_REACT_DEPLOYMENT_STRATEGY.md)**.
+
 ## 📈 Analytics tracking
 The application tracks:
 - `survey_start`: Triggered when "Begin Journey" is clicked.
