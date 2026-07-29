@@ -85,7 +85,8 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const loadEmailConfig = async () => {
     try {
       const res = await fetch('/api/email-config');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         if (Array.isArray(data.recipients)) {
           setEmailRecipients(data.recipients);
@@ -101,7 +102,8 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const loadAdminConfig = async () => {
     try {
       const res = await fetch('/api/admin-config');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         if (Array.isArray(data.admins)) {
           setAdminEmails(data.admins);
@@ -157,8 +159,15 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         setAdminSaveSuccess(true);
         setTimeout(() => setAdminSaveSuccess(false), 4000);
       } else {
-        const data = await res.json();
-        alert(`Failed to save admin list: ${data.error || 'Server error'}`);
+        const contentType = res.headers.get('content-type') || '';
+        let errMessage = 'Server error';
+        if (contentType.includes('application/json')) {
+          try {
+            const data = await res.json();
+            if (data.error) errMessage = data.error;
+          } catch {}
+        }
+        alert(`Failed to save admin list: ${errMessage}`);
       }
     } catch (err) {
       alert('Failed to save admin list.');
@@ -217,11 +226,16 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetEmail: target })
       });
-      const data = await res.json();
-      if (res.ok) {
-        setTestEmailResult(`Success (${data.mode}): ${data.message}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (res.ok) {
+          setTestEmailResult(`Success (${data.mode}): ${data.message}`);
+        } else {
+          setTestEmailResult(`Error: ${data.error || 'Failed to send test email.'}`);
+        }
       } else {
-        setTestEmailResult(`Error: ${data.error || 'Failed to send test email.'}`);
+        setTestEmailResult(`Error: Server returned non-JSON response (${res.status} ${res.statusText}). Make sure backend API server is running.`);
       }
     } catch (err: any) {
       setTestEmailResult(`Error: ${err.message || 'Connection failed'}`);

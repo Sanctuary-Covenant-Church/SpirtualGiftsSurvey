@@ -59,13 +59,25 @@ export default function App() {
   // Load configured admin emails from server
   useEffect(() => {
     fetch('/api/admin-config')
-      .then(res => res.json())
+      .then(async res => {
+        if (!res.ok) return null;
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) return null;
+        const text = await res.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      })
       .then(data => {
-        if (Array.isArray(data.admins) && data.admins.length > 0) {
+        if (data && Array.isArray(data.admins) && data.admins.length > 0) {
           setAllowedAdminEmails(data.admins);
         }
       })
-      .catch(err => console.error('Failed to load admin configuration:', err));
+      .catch(() => {
+        // Silently fallback to default admin emails if server endpoint is unavailable
+      });
   }, [view]);
   
   // Dynamic content from Firestore
@@ -105,24 +117,37 @@ export default function App() {
       return;
     }
 
-    const unsubGifts = onSnapshot(collection(db, 'gifts'), (snapshot) => {
-      if (!snapshot.empty) {
-        setGifts(snapshot.docs.map(doc => doc.data() as Gift));
+    const unsubGifts = onSnapshot(
+      collection(db, 'gifts'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          setGifts(snapshot.docs.map(doc => doc.data() as Gift));
+        }
+      },
+      (error) => {
+        console.warn('Firestore "gifts" collection listener error (using fallback local data):', error);
       }
-    });
+    );
 
-    const unsubQuestions = onSnapshot(collection(db, 'questions'), (snapshot) => {
-      if (!snapshot.empty) {
-        const loadedQuestions = snapshot.docs.map(doc => doc.data() as Question);
-        loadedQuestions.sort((a, b) => {
-          const orderA = typeof a.order === 'number' ? a.order : (parseInt(a.id, 10) || 0);
-          const orderB = typeof b.order === 'number' ? b.order : (parseInt(b.id, 10) || 0);
-          return orderA - orderB;
-        });
-        setQuestions(loadedQuestions);
+    const unsubQuestions = onSnapshot(
+      collection(db, 'questions'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const loadedQuestions = snapshot.docs.map(doc => doc.data() as Question);
+          loadedQuestions.sort((a, b) => {
+            const orderA = typeof a.order === 'number' ? a.order : (parseInt(a.id, 10) || 0);
+            const orderB = typeof b.order === 'number' ? b.order : (parseInt(b.id, 10) || 0);
+            return orderA - orderB;
+          });
+          setQuestions(loadedQuestions);
+        }
+        setIsDataLoading(false);
+      },
+      (error) => {
+        console.warn('Firestore "questions" collection listener error (using fallback local data):', error);
+        setIsDataLoading(false);
       }
-      setIsDataLoading(false);
-    });
+    );
 
     return () => {
       unsubGifts();
@@ -156,15 +181,31 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
       setView('admin');
     } catch (error: any) {
-      console.error('Login failed', error);
       const errMsg = error?.message || String(error);
+      const errCode = error?.code || '';
+
+      if (
+        errCode === 'auth/popup-closed-by-user' ||
+        errCode === 'auth/cancelled-popup-request' ||
+        errCode === 'auth/popup-blocked' ||
+        errMsg.includes('auth/popup-closed-by-user') ||
+        errMsg.includes('auth/cancelled-popup-request') ||
+        errMsg.includes('auth/popup-blocked')
+      ) {
+        // Silently ignore user closing/canceling login popup window
+        setLoginError(null);
+        return;
+      }
+
+      console.error('Login failed', error);
+
       if (errMsg.includes('auth/configuration-not-found')) {
         setLoginError('Google Sign-in is not enabled or not fully configured in your Firebase Project.\n\nTo resolve this:\n1. Go to the Firebase Console (https://console.firebase.google.com)\n2. Navigate to "Build" -> "Authentication" -> "Sign-in method" tab.\n3. Add and Enable the "Google" provider.\n4. Ensure you save the changes.');
       } else if (errMsg.includes('auth/operation-not-allowed')) {
         setLoginError('Google provider is disabled in your Firebase Console. Please go to Build -> Authentication and enable Google Sign-In.');
       } else if (errMsg.includes('auth/unauthorized-domain')) {
         const currentHost = window.location.hostname;
-        setLoginError(`Firebase Auth Error: Unauthorized Domain.\n\nThe domain "${currentHost}" is not authorized in your Firebase Project.\n\nTo resolve this:\n1. Go to the Firebase Console (https://console.firebase.google.com)\n2. Navigate to "Build" -> "Authentication" -> "Settings" tab (at the top right of the section).\n3. Click on "Authorized domains" on the left menu.\n4. Click "Add domain" and add:\n   • ${currentHost}\n5. If you share this app, also add:\n   • ais-pre-bun6aislalbji7kh7as6y6-513878994172.us-east1.run.app`);
+        setLoginError(`Firebase Auth Error: Unauthorized Domain.\n\nThe domain "${currentHost}" is not authorized in Firebase Project: "${firebaseProjectId}".\n\nTo resolve this:\n1. Go to the Firebase Console (https://console.firebase.google.com)\n2. Select Project: "${firebaseProjectId}"\n3. Navigate to "Build" -> "Authentication" -> "Settings" tab (top right).\n4. Click on "Authorized domains" on the left menu.\n5. Click "Add domain" and add:\n   • ${currentHost}\n6. If you share this app, also add:\n   • ais-pre-bun6aislalbji7kh7as6y6-513878994172.us-east1.run.app`);
       } else {
         setLoginError(`Firebase Auth Error: ${errMsg}`);
       }

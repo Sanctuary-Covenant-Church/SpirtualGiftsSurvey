@@ -45,6 +45,10 @@ if (isFirebaseConfigured) {
     app = initializeApp(firebaseConfig);
     db = isValidDatabaseId ? getFirestore(app, rawDatabaseId) : getFirestore(app);
     auth = getAuth(app);
+    if (typeof window !== 'undefined') {
+      (window as any).__FIREBASE_CONFIG__ = firebaseConfig;
+      console.log(`[Firebase] Initialized with Project ID: "${firebaseConfig.projectId}"`);
+    }
   } catch (error) {
     console.error('Failed to initialize Firebase SDK:', error);
   }
