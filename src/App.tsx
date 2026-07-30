@@ -50,6 +50,9 @@ export default function App() {
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
   const [userInfo, setUserInfo] = useState({ name: '', email: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEmailSubmitted, setIsEmailSubmitted] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<{ success: boolean; mode?: string; message: string } | null>(null);
+  const [isResendingEmail, setIsResendingEmail] = useState(false);
   const [result, setResult] = useState<SurveyResult | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [showSetupModal, setShowSetupModal] = useState(false);
@@ -283,31 +286,104 @@ export default function App() {
 
   const handleSubmitResults = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!userInfo.email || !userInfo.email.trim()) return;
+
     setIsSubmitting(true);
+    setEmailStatus(null);
     try {
-      if (result) {
-        const finalResult = { ...result, ...userInfo };
-        setResult(finalResult);
+      const computedResult = result || calculateResult(responses);
+      const finalResult = { ...computedResult, ...userInfo };
+      setResult(finalResult);
 
-        await fetch('/api/send-results', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: userInfo.name,
-            email: userInfo.email,
-            topGifts: finalResult.topGifts || [],
-            topMinistryMatches: finalResult.topMinistryMatches || [],
-            timestamp: finalResult.timestamp
-          })
+      const res = await fetch('/api/send-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: userInfo.name,
+          email: userInfo.email,
+          topGifts: finalResult.topGifts || [],
+          topMinistryMatches: finalResult.topMinistryMatches || [],
+          timestamp: finalResult.timestamp
+        })
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        console.log('[Email Trigger Result]', data);
+        setEmailStatus({
+          success: true,
+          mode: data.mode,
+          message: data.message
         });
-
-        trackEvent('survey_complete', { topGifts: finalResult.primaryGiftIds });
-        setView('results');
+      } else {
+        let errText = 'Server error during email dispatch.';
+        if (contentType.includes('application/json')) {
+          try {
+            const errJson = await res.json();
+            if (errJson.error) errText = errJson.error;
+          } catch {}
+        }
+        console.warn('[Email Trigger Error]', errText);
+        setEmailStatus({
+          success: false,
+          message: errText
+        });
       }
-    } catch (error) {
-      console.error('Failed to submit results', error);
+
+      setIsEmailSubmitted(true);
+      trackEvent('survey_complete', { topGifts: finalResult.primaryGiftIds });
+      setView('results');
+    } catch (error: any) {
+      console.error('Failed to submit results email:', error);
+      setEmailStatus({
+        success: false,
+        message: error?.message || 'Network error sending results email'
+      });
+      setIsEmailSubmitted(true);
+      setView('results');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleResendEmail = async () => {
+    if (!result || !userInfo.email) return;
+    setIsResendingEmail(true);
+    try {
+      const res = await fetch('/api/send-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: userInfo.name,
+          email: userInfo.email,
+          topGifts: result.topGifts || [],
+          topMinistryMatches: result.topMinistryMatches || [],
+          timestamp: result.timestamp
+        })
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        setEmailStatus({
+          success: true,
+          mode: data.mode,
+          message: data.message
+        });
+      } else {
+        let errText = 'Failed to resend email';
+        if (contentType.includes('application/json')) {
+          try {
+            const errJson = await res.json();
+            if (errJson.error) errText = errJson.error;
+          } catch {}
+        }
+        setEmailStatus({ success: false, message: errText });
+      }
+    } catch (err: any) {
+      setEmailStatus({ success: false, message: err?.message || 'Network error' });
+    } finally {
+      setIsResendingEmail(false);
     }
   };
 
@@ -316,6 +392,8 @@ export default function App() {
     setCurrentQuestionIndex(0);
     setView('hero');
     setResult(null);
+    setIsEmailSubmitted(false);
+    setEmailStatus(null);
   };
 
   const progress = (currentQuestionIndex / questions.length) * 100;
@@ -465,7 +543,7 @@ export default function App() {
               </button>
             </div>
 
-            {currentQuestionIndex === questions.length - 1 && responses.length === questions.length && !result?.email && (
+            {currentQuestionIndex === questions.length - 1 && responses.length === questions.length && !isEmailSubmitted && (
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -598,9 +676,34 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-4 text-[11px] text-brand-muted uppercase tracking-widest font-medium border-t border-brand-border pt-8">
-                    <Mail className="w-4 h-4 text-brand-red shrink-0" />
-                    <span>A detailed report (Top 5 Gifts & Top 5 Ministry Matches) has been emailed to <strong className="text-brand-text font-bold">{userInfo.email}</strong> and church leadership.</span>
+                  <div className="border-t border-brand-border pt-8 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-[11px] text-brand-muted uppercase tracking-widest font-medium">
+                      <div className="flex items-center gap-3">
+                        <Mail className="w-4 h-4 text-brand-red shrink-0" />
+                        <span>
+                          {emailStatus?.mode === 'simulated' ? (
+                            <>Results report generated for <strong className="text-brand-text font-bold">{userInfo.email || 'participant'}</strong> <span className="normal-case text-[10px] text-brand-accent-sage font-mono">(Simulation Mode)</span></>
+                          ) : (
+                            <>Results report emailed to <strong className="text-brand-text font-bold">{userInfo.email || 'participant'}</strong> and church leadership.</>
+                          )}
+                        </span>
+                      </div>
+                      {userInfo.email && (
+                        <button
+                          onClick={handleResendEmail}
+                          disabled={isResendingEmail}
+                          className="px-4 py-2 bg-brand-surface border border-brand-border rounded-full hover:bg-white transition-all text-[9px] font-bold text-brand-text flex items-center justify-center gap-2 self-start sm:self-auto disabled:opacity-50"
+                        >
+                          <Mail className="w-3.5 h-3.5 text-brand-red" />
+                          {isResendingEmail ? 'Sending...' : 'Resend Email Report'}
+                        </button>
+                      )}
+                    </div>
+                    {emailStatus?.message && (
+                      <div className={`p-3 rounded-xl border text-[10px] font-mono leading-relaxed ${emailStatus.success ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800' : 'bg-amber-50/60 border-amber-200 text-amber-800'}`}>
+                        {emailStatus.message}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

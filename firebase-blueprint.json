@@ -59,6 +59,17 @@
       "properties": {
         "email": { "type": "string" }
       }
+    },
+    "ErrorLog": {
+      "title": "Error Log",
+      "description": "Log of server and API errors for administrative debugging without leaking details to end users.",
+      "type": "object",
+      "properties": {
+        "context": { "type": "string" },
+        "message": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
@@ -81,6 +92,10 @@
     "admins/{userId}": {
       "schema": "Admin",
       "description": "Authorized administrators."
+    },
+    "error_logs/{logId}": {
+      "schema": "ErrorLog",
+      "description": "System error logs for admin diagnosis."
     }
   }
 }
