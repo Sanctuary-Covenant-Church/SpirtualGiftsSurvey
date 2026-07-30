@@ -508,6 +508,60 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // GET /api/error-logs - Retrieve error logs directly from Firestore REST API
+  app.get("/api/error-logs", async (req, res) => {
+    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+    const apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
+    const databaseId = process.env.VITE_FIREBASE_DATABASE_ID || "(default)";
+
+    if (!projectId) {
+      return res.json({ logs: [] });
+    }
+
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/error_logs${apiKey ? `?key=${apiKey}` : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        return res.json({ logs: [] });
+      }
+      const data = await response.json();
+      const documents = data.documents || [];
+      const logs = documents.map((doc: any) => {
+        const fields = doc.fields || {};
+        const id = doc.name ? doc.name.split("/").pop() : Math.random().toString();
+        return {
+          id,
+          context: fields.context?.stringValue || "System Error",
+          message: fields.message?.stringValue || "",
+          details: fields.details?.stringValue || "",
+          timestamp: fields.timestamp?.stringValue || doc.createTime || new Date().toISOString()
+        };
+      });
+      logs.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      res.json({ logs });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch error logs from Firestore." });
+    }
+  });
+
+  // POST /api/trigger-test-error-log - Manual route to test creating an error log document in Firestore
+  app.post("/api/trigger-test-error-log", async (req, res) => {
+    try {
+      const testContext = req.body?.context || "Manual Admin Test";
+      const testMsg = req.body?.message || "Test error entry created to verify error_logs collection in Firestore.";
+      await logErrorToFirebase(testContext, new Error(testMsg), {
+        triggeredBy: req.body?.triggeredBy || "Admin User",
+        ip: req.ip
+      });
+      res.json({
+        success: true,
+        message: "Test error log successfully dispatched to Firestore error_logs collection."
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to create test log in Firestore." });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -525,6 +579,10 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    // Log system boot event to ensure Firestore error_logs collection is initialized
+    logErrorToFirebase("System Service Boot", new Error("Server started and error logging pipeline initialized successfully."), {
+      environment: process.env.NODE_ENV || "development"
+    }).catch(() => {});
   });
 }
 

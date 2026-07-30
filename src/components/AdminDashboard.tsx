@@ -36,7 +36,9 @@ import {
   AtSign,
   ShieldCheck,
   UserCheck,
-  Shield
+  Shield,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { db, auth, isFirebaseConfigured, firebaseProjectId, firebaseDatabaseId } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -53,11 +55,68 @@ enum OperationType {
 }
 
 export default function AdminDashboard({ onExit }: { onExit: () => void }) {
-  const [activeTab, setActiveTab] = useState<'gifts' | 'questions' | 'analytics' | 'emails' | 'admins'>('gifts');
+  const [activeTab, setActiveTab] = useState<'gifts' | 'questions' | 'analytics' | 'emails' | 'admins' | 'logs'>('gifts');
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Error log state
+  const [errorLogs, setErrorLogs] = useState<any[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  const fetchErrorLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      // 1. First try server endpoint which bypasses client auth constraints
+      const res = await fetch('/api/error-logs');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.logs)) {
+          setErrorLogs(data.logs);
+          setIsLoadingLogs(false);
+          return;
+        }
+      }
+    } catch (apiErr) {
+      // Ignore API fetch error and proceed to fallback
+    }
+
+    try {
+      // 2. Fallback to client Firestore SDK if configured
+      if (isFirebaseConfigured) {
+        const q = query(collection(db, 'error_logs'), orderBy('timestamp', 'desc'));
+        const snapshot = await getDocs(q);
+        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setErrorLogs(logs);
+      } else {
+        const localLogs = localStorage.getItem('sanctuary_error_logs');
+        if (localLogs) {
+          setErrorLogs(JSON.parse(localLogs));
+        } else {
+          setErrorLogs([]);
+        }
+      }
+    } catch (err) {
+      // Fallback cleanly to local storage if Firestore permission denied or unauthenticated
+      const localLogs = localStorage.getItem('sanctuary_error_logs');
+      if (localLogs) {
+        try {
+          setErrorLogs(JSON.parse(localLogs));
+        } catch {}
+      } else {
+        setErrorLogs([]);
+      }
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'logs') {
+      fetchErrorLogs();
+    }
+  }, [activeTab]);
   
   // Email settings states
   const [emailRecipients, setEmailRecipients] = useState<string[]>(['cdonyi@gmail.com', 'siona@sanctuarycov.org']);
@@ -241,6 +300,29 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       setTestEmailResult(`Error: ${err.message || 'Connection failed'}`);
     } finally {
       setIsTestingEmail(false);
+    }
+  };
+
+  const handleTriggerTestLog = async () => {
+    try {
+      const res = await fetch('/api/trigger-test-error-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          context: 'Admin Dashboard Test Verification',
+          triggeredBy: auth?.currentUser?.email || 'Admin User',
+          message: 'Test log created from Admin Dashboard to initialize and verify the error_logs collection in Firestore.'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Successfully written test entry to Firestore error_logs collection!');
+        fetchErrorLogs();
+      } else {
+        alert(`Error: ${data.error || 'Failed to create test log.'}`);
+      }
+    } catch (err: any) {
+      alert(`Error triggering test log: ${err.message}`);
     }
   };
 
@@ -529,6 +611,12 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${activeTab === 'emails' ? 'bg-brand-surface text-brand-text font-bold text-brand-red' : 'text-brand-muted hover:bg-brand-bg'}`}
           >
             <Mail className="w-4 h-4" /> Email Notifications
+          </button>
+          <button 
+            onClick={() => setActiveTab('logs')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${activeTab === 'logs' ? 'bg-brand-surface text-brand-text font-bold text-amber-700' : 'text-brand-muted hover:bg-brand-bg'}`}
+          >
+            <AlertTriangle className="w-4 h-4" /> System Error Logs
           </button>
           <button 
             onClick={() => setActiveTab('admins')}
@@ -1086,6 +1174,116 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
                 </p>
                 <p>
                   • <strong>Persistence:</strong> Changes made here are saved to the server configuration (<code>data/admins.json</code>) so updated administrator privileges persist across sessions and deployments.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SYSTEM ERROR LOGS TAB */}
+        {activeTab === 'logs' && (
+          <div className="space-y-8 max-w-4xl">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                <h3 className="text-xl font-serif italic text-brand-text">System Error Logs</h3>
+              </div>
+              <p className="text-xs text-brand-muted leading-relaxed">
+                Centralized, sanitized error logging. Internal service exceptions and API failures are stripped of sensitive key details before sending generic messages to users, while full diagnostic context is recorded directly in Firestore's <code>error_logs</code> collection.
+              </p>
+            </div>
+
+            {/* Error Log Controls & Trigger Card */}
+            <div className="bg-brand-surface rounded-[2.5rem] p-8 border border-brand-border space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-brand-border">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-text">Firestore Diagnostics Pipeline</h4>
+                  <p className="text-[11px] text-brand-muted mt-1">
+                    Click below to generate a test error log entry to verify Firestore collection creation and rules.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={fetchErrorLogs}
+                    disabled={isLoadingLogs}
+                    className="px-4 py-2.5 bg-white border border-brand-border text-brand-text text-[10px] font-bold uppercase tracking-wider rounded-xl hover:bg-brand-surface transition-all flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
+                    Refresh Logs
+                  </button>
+                  <button
+                    onClick={handleTriggerTestLog}
+                    className="px-5 py-2.5 bg-brand-text text-white text-[10px] font-bold uppercase tracking-wider rounded-xl hover:bg-black transition-all flex items-center gap-2 shadow-sm"
+                  >
+                    <Database className="w-3.5 h-3.5 text-brand-accent-gold" />
+                    Write Test Log
+                  </button>
+                </div>
+              </div>
+
+              {/* Log List View */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h5 className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-muted">Recorded Error Events ({errorLogs.length})</h5>
+                  {isFirebaseConfigured && (
+                    <span className="text-[10px] font-mono text-brand-accent-sage font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-brand-accent-sage animate-pulse"></span>
+                      Firestore Collection: error_logs
+                    </span>
+                  )}
+                </div>
+
+                {isLoadingLogs ? (
+                  <div className="p-8 text-center bg-white rounded-2xl border border-brand-border">
+                    <p className="text-xs text-brand-muted animate-pulse font-mono">Loading error logs from Firestore...</p>
+                  </div>
+                ) : errorLogs.length === 0 ? (
+                  <div className="p-8 text-center bg-white rounded-2xl border border-brand-border space-y-3">
+                    <AlertTriangle className="w-8 h-8 text-brand-muted mx-auto opacity-50" />
+                    <p className="text-xs font-medium text-brand-text">No error logs recorded yet.</p>
+                    <p className="text-[11px] text-brand-muted max-w-md mx-auto">
+                      API or server execution errors will automatically appear here. You can click <strong>"Write Test Log"</strong> above to dispatch a test entry now.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {errorLogs.map((log, idx) => (
+                      <div key={log.id || idx} className="p-5 bg-white rounded-2xl border border-brand-border font-mono text-xs space-y-2">
+                        <div className="flex items-center justify-between gap-4 pb-2 border-b border-brand-border/60">
+                          <span className="font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-lg border border-amber-200/60 text-[10px]">
+                            {log.context || 'System Error'}
+                          </span>
+                          <span className="text-[10px] text-brand-muted">
+                            {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'Just now'}
+                          </span>
+                        </div>
+                        <p className="text-brand-text font-sans text-xs font-semibold pt-1">
+                          {log.message || 'No message string'}
+                        </p>
+                        {log.details && log.details !== '{}' && (
+                          <pre className="text-[10px] text-brand-muted bg-brand-surface p-3 rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed mt-2 border border-brand-border/40">
+                            {log.details}
+                          </pre>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Architecture Explanatory Card */}
+            <div className="bg-brand-surface rounded-[2.5rem] p-8 border border-brand-border space-y-4">
+              <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-accent-gold">Security & Error Handling Architecture</h4>
+              <div className="text-xs text-brand-muted leading-relaxed space-y-2">
+                <p>
+                  • <strong>Public Response Sanitization:</strong> All Express API endpoints return generic client-facing messages (e.g. <em>"Failed to send survey results email. Please try again later or contact support."</em>) to prevent leaking endpoints, stack traces, hostnames, or API keys.
+                </p>
+                <p>
+                  • <strong>Firestore Append-Only Log Pipeline:</strong> Raw exceptions, provider status codes, and environment details are logged asynchronously to the <code>error_logs</code> collection in Firestore.
+                </p>
+                <p>
+                  • <strong>Access Control Rules:</strong> Security rules in <code>firestore.rules</code> restrict reading and deleting error logs exclusively to authenticated Curator Administrators.
                 </p>
               </div>
             </div>

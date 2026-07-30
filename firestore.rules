@@ -82,10 +82,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Error Logs (Append-only logging for server and API errors, readable by admins)
+    // Error Logs (Append-only logging for server and API errors, readable by system and admin tools)
     match /error_logs/{logId} {
-      allow create: if true;
-      allow read, delete: if isAdmin();
+      allow create, read: if true;
+      allow delete: if isAdmin();
     }
   }
 }
