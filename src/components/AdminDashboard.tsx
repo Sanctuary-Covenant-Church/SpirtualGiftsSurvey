@@ -144,16 +144,18 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const loadEmailConfig = async () => {
     try {
       const res = await fetch('/api/email-config');
-      const contentType = res.headers.get('content-type');
-      if (res.ok && contentType && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (Array.isArray(data.recipients)) {
-          setEmailRecipients(data.recipients);
+      if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (Array.isArray(data.recipients)) {
+            setEmailRecipients(data.recipients);
+          }
+          setEmailServerStatus(data);
         }
-        setEmailServerStatus(data);
       }
     } catch (err) {
-      console.error('Failed to fetch email config:', err);
+      // Silently ignore fetch errors on static hosts like Netlify
     }
   };
 
@@ -161,15 +163,17 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const loadAdminConfig = async () => {
     try {
       const res = await fetch('/api/admin-config');
-      const contentType = res.headers.get('content-type');
-      if (res.ok && contentType && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (Array.isArray(data.admins)) {
-          setAdminEmails(data.admins);
+      if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (Array.isArray(data.admins)) {
+            setAdminEmails(data.admins);
+          }
         }
       }
     } catch (err) {
-      console.error('Failed to fetch admin config:', err);
+      // Silently ignore fetch errors on static hosts like Netlify
     }
   };
 

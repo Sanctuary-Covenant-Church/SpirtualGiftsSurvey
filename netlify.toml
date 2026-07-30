@@ -1,0 +1,16 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+# SPA Fallback Rule
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Optional API Proxy Rule (Uncomment and replace 'to' URL if server.ts is deployed on Cloud Run, Render, or Railway)
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://your-express-backend.run.app/api/:splat"
+#   status = 200
+#   force = true
