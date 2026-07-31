@@ -692,7 +692,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         <header className="mb-12 flex justify-between items-end">
           <div>
             <span className="text-[11px] font-bold text-brand-accent-gold uppercase tracking-[0.3em] mb-2 block">System Configuration</span>
-            <h1 className="text-4xl font-serif italic">
+            <h1 className="text-3xl font-bold tracking-tight text-brand-text">
               {activeTab === 'gifts' && 'Spiritual Gifts Library'}
               {activeTab === 'questions' && 'Survey Question Pool'}
               {activeTab === 'analytics' && 'Operational Insights'}
@@ -776,7 +776,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             <div className="flex items-start gap-4">
               <Info className="w-6 h-6 text-brand-accent-gold mt-1 shrink-0" />
               <div>
-                <h3 className="font-serif italic text-lg mb-1 text-brand-text">New Database Detected</h3>
+                <h3 className="font-semibold text-base mb-1 text-brand-text">New Database Detected</h3>
                 <p className="text-xs text-brand-muted max-w-xl leading-relaxed">
                   Your migrated Firestore database is currently empty. You can instantly seed it with the default Sanctuary Covenant Church spiritual gifts and questions to get started.
                 </p>
@@ -798,7 +798,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
               <div key={gift.id} className="bg-white border border-brand-border p-8 rounded-[2rem] flex justify-between items-start group hover:border-brand-accent-sage transition-all">
                 <div className="max-w-2xl">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-xl font-serif italic">{gift.name}</h3>
+                    <h3 className="text-lg font-bold text-brand-text">{gift.name}</h3>
                     <span className="px-2 py-0.5 bg-brand-surface text-[10px] uppercase font-bold tracking-tighter text-brand-muted border border-brand-border rounded">ID: {gift.id}</span>
                   </div>
                   <p className="text-xs text-brand-muted leading-relaxed mb-4">{gift.description}</p>
@@ -912,7 +912,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         {activeTab === 'analytics' && (
           <div className="p-20 text-center bg-white border border-brand-border rounded-[3rem]">
             <Info className="w-12 h-12 text-brand-accent-gold mx-auto mb-6 opacity-30" />
-            <h3 className="text-2xl font-serif italic mb-4">Analytics Engine Active</h3>
+            <h3 className="text-xl font-bold text-brand-text mb-4">Analytics Engine Active</h3>
             <p className="text-sm text-brand-muted max-w-sm mx-auto leading-relaxed">
               Real-time conversion data and gift distribution patterns are being collected. Full visualization suite coming to next iteration.
             </p>
@@ -929,7 +929,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     <span className="w-2.5 h-2.5 rounded-full bg-brand-red inline-block animate-pulse"></span>
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-red">Automated Delivery System</span>
                   </div>
-                  <h3 className="text-2xl font-serif italic text-brand-text">Survey Results Routing</h3>
+                  <h3 className="text-xl font-bold text-brand-text">Survey Results Routing</h3>
                   <p className="text-xs text-brand-muted mt-1 leading-relaxed">
                     Whenever a participant completes the Soul Discovery survey, a full report (Top 5 Gifts & Top 5 Ministry Matches) is emailed to the participant and all notification addresses below.
                   </p>
@@ -1018,7 +1018,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
             {/* Test Email Delivery Section */}
             <div className="bg-white border border-brand-border rounded-[2.5rem] p-8 shadow-xs">
-              <h3 className="text-xl font-serif italic text-brand-text mb-2">Test Email Generator</h3>
+              <h3 className="text-lg font-bold text-brand-text mb-2">Test Email Generator</h3>
               <p className="text-xs text-brand-muted mb-6 leading-relaxed">
                 Send a sample Top 5 Gifts & Top 5 Ministry Matches report to verify email delivery.
               </p>
@@ -1099,7 +1099,7 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
                 <span className="p-2 bg-brand-accent-gold/10 text-brand-accent-gold rounded-xl">
                   <ShieldCheck className="w-5 h-5" />
                 </span>
-                <h3 className="text-2xl font-serif italic text-brand-text">Admin Users & Access Control</h3>
+                <h3 className="text-xl font-bold text-brand-text">Admin Users & Access Control</h3>
               </div>
               <p className="text-xs text-brand-muted leading-relaxed font-light">
                 Configure which Google accounts are authorized to access this Curator Admin Dashboard. Anyone attempting to log in with Google Authentication whose email address is not in this list will be blocked.
@@ -1214,7 +1214,7 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <AlertTriangle className="w-5 h-5 text-amber-600" />
-                <h3 className="text-xl font-serif italic text-brand-text">System Error Logs</h3>
+                <h3 className="text-xl font-bold text-brand-text">System Error Logs</h3>
               </div>
               <p className="text-xs text-brand-muted leading-relaxed">
                 Centralized, sanitized error logging. Internal service exceptions and API failures are stripped of sensitive key details before sending generic messages to users, while full diagnostic context is recorded directly in Firestore's <code>error_logs</code> collection.
@@ -1323,7 +1323,7 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
       {editingGift && (
         <div className="fixed inset-0 z-[200] bg-brand-text/40 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="bg-brand-bg rounded-[2.5rem] p-10 max-w-xl w-full border border-brand-border shadow-2xl">
-            <h3 className="text-2xl font-serif italic mb-8">{editingGift.name ? 'Edit Gift' : 'Define New Gift'}</h3>
+            <h3 className="text-xl font-bold tracking-tight text-brand-text mb-8">{editingGift.name ? 'Edit Gift' : 'Define New Gift'}</h3>
             <div className="space-y-6">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-brand-muted mb-2">Internal ID</label>
@@ -1377,7 +1377,7 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
       {editingQuestion && (
         <div className="fixed inset-0 z-[200] bg-brand-text/40 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="bg-brand-bg rounded-[2.5rem] p-10 max-w-xl w-full border border-brand-border shadow-2xl">
-            <h3 className="text-2xl font-serif italic mb-8">Configure Question</h3>
+            <h3 className="text-xl font-bold tracking-tight text-brand-text mb-8">Configure Question</h3>
             <div className="space-y-6">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-brand-muted mb-2">Question Prompt</label>
@@ -1385,7 +1385,7 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
                   rows={3}
                   value={editingQuestion.text} 
                   onChange={e => setEditingQuestion({...editingQuestion, text: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-brand-border focus:border-brand-text outline-none text-sm resize-none italic font-serif"
+                  className="w-full px-4 py-3 rounded-xl border border-brand-border focus:border-brand-text outline-none text-sm resize-none font-sans"
                   placeholder="e.g. I feel energized when I'm helping others solve practical problems."
                 />
               </div>

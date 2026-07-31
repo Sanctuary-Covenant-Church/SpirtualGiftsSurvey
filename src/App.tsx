@@ -430,7 +430,7 @@ export default function App() {
       return (
         <div className="h-screen flex items-center justify-center bg-brand-bg flex-col gap-6 p-6 text-center">
           <ShieldAlert className="w-12 h-12 text-red-500" />
-          <h2 className="text-2xl font-serif italic text-brand-text">Unauthorized Access</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-brand-text">Unauthorized Access</h2>
           <p className="text-xs text-brand-muted max-w-md leading-relaxed">
             You are logged in as <span className="font-bold text-brand-text">{user?.email || 'unknown'}</span>, which is not in the list of authorized administrators.
           </p>
@@ -517,7 +517,7 @@ export default function App() {
               <div className="flex justify-between items-end mb-6">
                 <div>
                   <span className="text-[10px] font-bold text-brand-accent-gold uppercase tracking-[0.2em]">Discovery in progress</span>
-                  <h2 className="text-3xl font-serif italic mt-2">The Sanctuary Survey</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-text mt-2">The Sanctuary Survey</h2>
                 </div>
                 <span className="text-[10px] font-bold text-brand-muted uppercase tracking-widest">{Math.round(progress)}%</span>
               </div>
@@ -531,7 +531,7 @@ export default function App() {
             </div>
 
             <div className="bg-white border border-brand-border p-10 sm:p-16 rounded-[2rem] mb-12">
-              <p className="text-2xl sm:text-3xl text-brand-text font-serif italic leading-snug mb-16 text-center">
+              <p className="text-xl sm:text-2xl text-brand-text font-medium leading-relaxed mb-16 text-center">
                 "{questions[currentQuestionIndex]?.text}"
               </p>
 
@@ -573,7 +573,7 @@ export default function App() {
                 className="fixed inset-0 z-[100] bg-brand-text/40 backdrop-blur-sm flex items-center justify-center p-6"
               >
                 <div className="bg-brand-bg rounded-[2.5rem] p-10 max-w-md w-full border border-brand-border shadow-2xl">
-                  <h3 className="text-2xl font-serif italic mb-2">Final Step</h3>
+                  <h3 className="text-2xl font-bold tracking-tight text-brand-text mb-2">Final Step</h3>
                   <p className="text-sm text-brand-muted mb-8 leading-relaxed">Where should we secure your results? We'll send a full summary to your inbox.</p>
                   <form onSubmit={handleSubmitResults} className="space-y-6">
                     <div>
@@ -646,11 +646,11 @@ export default function App() {
                               {gMatch.score} / {gMatch.maxScore} pts
                             </span>
                           </div>
-                          <div className="text-xl font-serif italic mb-1 text-brand-text group-hover:text-brand-red transition-colors">
+                          <div className="text-lg font-bold text-brand-text group-hover:text-brand-red transition-colors mb-1">
                             {gMatch.name}
                           </div>
                           {gMatch.scripture && (
-                            <div className="text-[11px] text-brand-red font-serif italic mb-2">
+                            <div className="text-xs font-semibold text-brand-red mb-2 font-mono">
                               {gMatch.scripture}
                             </div>
                           )}
@@ -686,7 +686,7 @@ export default function App() {
                               <span className="w-6 h-6 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-[10px] font-bold">
                                 {idx + 1}
                               </span>
-                              <span className="text-sm font-serif italic font-bold text-brand-text">
+                              <span className="text-sm font-semibold text-brand-text">
                                 {mMatch.teamName}
                               </span>
                             </div>
@@ -734,7 +734,7 @@ export default function App() {
               {/* Sidebar CTA */}
               <div className="lg:w-96">
                 <div className="bg-brand-surface rounded-[3rem] p-10 sm:p-12 flex flex-col h-full border border-brand-border shadow-sm">
-                  <h3 className="text-2xl font-serif italic mb-6">Ready to serve?</h3>
+                  <h3 className="text-2xl font-bold tracking-tight text-brand-text mb-6">Ready to serve?</h3>
                   <p className="text-sm text-brand-muted leading-relaxed mb-10 font-light">
                     Your gifts are a perfect match for our <span className="font-bold text-brand-text">Welcome Team</span> and <span className="font-bold text-brand-text">Hospitality</span> groups at Sanctuary.
                   </p>
@@ -791,7 +791,7 @@ export default function App() {
           <div className="bg-brand-bg rounded-[2.5rem] p-10 max-w-2xl w-full border border-brand-border shadow-2xl overflow-y-auto max-h-[90vh]">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h3 className="text-2xl font-serif italic text-brand-text">Firebase Migration Guide</h3>
+                <h3 className="text-2xl font-bold tracking-tight text-brand-text">Firebase Migration Guide</h3>
                 <p className="text-xs text-brand-muted mt-1">Configure your own Google Account's Firebase Database</p>
               </div>
               <button 
@@ -857,7 +857,7 @@ VITE_FIREBASE_DATABASE_ID=""`}
           <div className="bg-brand-bg rounded-[2.5rem] p-10 max-w-xl w-full border border-brand-border shadow-2xl">
             <div className="flex items-center gap-3 text-red-600 mb-6">
               <Info className="w-6 h-6 shrink-0" />
-              <h3 className="text-2xl font-serif italic text-brand-text">Authentication Error</h3>
+              <h3 className="text-2xl font-bold tracking-tight text-brand-text">Authentication Error</h3>
             </div>
             
             <p className="text-xs text-brand-muted uppercase tracking-wider font-bold mb-2">Details:</p>

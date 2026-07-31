@@ -228,7 +228,7 @@ export default function Layout({
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col justify-between">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-red block mb-2">Get Connected</span>
-              <h4 className="text-lg font-serif italic text-white mb-2">Serve With Sanctuary</h4>
+              <h4 className="text-base font-semibold text-white mb-2">Serve With Sanctuary</h4>
               <p className="text-xs text-white/60 font-light leading-relaxed mb-6">
                 Ready to take the next step in serving our community? Visit our official teams page to get plugged in.
               </p>
