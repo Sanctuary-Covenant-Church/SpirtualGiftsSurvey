@@ -76,7 +76,8 @@ export const handler = async (event, context) => {
       topMinistryMatches: topMinistryMatches || []
     });
 
-    const resendResponse = await fetch("https://api.resend.com/emails", {
+    // 1. Primary Email Attempt (to all recipients)
+    let resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${resendApiKey}`,
@@ -90,29 +91,117 @@ export const handler = async (event, context) => {
       })
     });
 
-    const resendData = await resendResponse.json().catch(() => ({}));
+    let resendData = await resendResponse.json().catch(() => ({}));
 
-    if (!resendResponse.ok) {
+    // If primary attempt succeeded, return 200
+    if (resendResponse.ok) {
       return {
-        statusCode: resendResponse.status || 400,
+        statusCode: 200,
         headers: CORS_HEADERS,
         body: JSON.stringify({
-          error: resendData.message || resendData.error || `Resend API returned HTTP ${resendResponse.status}`
+          success: true,
+          mode: "netlify_function_resend",
+          message: `Results emailed to ${email} and leadership contacts!`,
+          data: resendData
         })
       };
     }
 
+    console.warn(`[Resend Primary Attempt Failed] Status: ${resendResponse.status}`, resendData);
+
+    // 2. Fallback Attempt A: If custom 'fromEmail' failed with 422 (e.g., unverified domain), retry with default onboarding@resend.dev
+    if (resendResponse.status === 422 && !fromEmail.includes('onboarding@resend.dev')) {
+      console.log('[Resend Fallback A] Retrying with default onboarding@resend.dev sender address...');
+      const fallbackFrom = "Sanctuary Covenant Church <onboarding@resend.dev>";
+      
+      const retryA = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: fallbackFrom,
+          to: allRecipients,
+          subject: `Soul Discovery Results: ${name || 'Participant'} (${email})`,
+          html: htmlContent
+        })
+      });
+
+      const retryAData = await retryA.json().catch(() => ({}));
+      if (retryA.ok) {
+        return {
+          statusCode: 200,
+          headers: CORS_HEADERS,
+          body: JSON.stringify({
+            success: true,
+            mode: "netlify_function_resend_fallback",
+            message: `Results emailed to ${email}! (Note: Sent via default Resend sender because custom domain is not yet verified in Resend)`,
+            data: retryAData
+          })
+        };
+      }
+      console.warn(`[Resend Fallback A Failed] Status: ${retryA.status}`, retryAData);
+    }
+
+    // 3. Fallback Attempt B: If 422 error is due to testing domain recipient limits (onboarding@resend.dev only allows sending to owner email)
+    if (resendResponse.status === 422 && adminRecipients.length > 0) {
+      console.log('[Resend Fallback B] Retrying email dispatch specifically to verified admin contacts...');
+      const fallbackFrom = "Sanctuary Covenant Church <onboarding@resend.dev>";
+      
+      const retryB = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: fallbackFrom,
+          to: adminRecipients,
+          subject: `Soul Discovery Results: ${name || 'Participant'} (${email})`,
+          html: htmlContent
+        })
+      });
+
+      const retryBData = await retryB.json().catch(() => ({}));
+      if (retryB.ok) {
+        return {
+          statusCode: 200,
+          headers: CORS_HEADERS,
+          body: JSON.stringify({
+            success: true,
+            mode: "netlify_function_resend_admin",
+            message: `Results saved & sent to leadership (${adminRecipients.join(', ')}). Note: To enable direct participant emails, verify your domain in Resend dashboard.`,
+            data: retryBData
+          })
+        };
+      }
+      console.warn(`[Resend Fallback B Failed] Status: ${retryB.status}`, retryBData);
+    }
+
+    // 4. If all attempts fail, extract clear, actionable error message from Resend
+    let resendMessage = resendData.message || resendData.error || `Resend API returned HTTP ${resendResponse.status}`;
+    if (typeof resendMessage !== 'string') {
+      resendMessage = JSON.stringify(resendMessage);
+    }
+
+    let userFacingNotice = resendMessage;
+    if (resendMessage.includes('testing emails') || resendMessage.includes('own email address')) {
+      userFacingNotice = `Resend Testing Limit: Free Resend domain (onboarding@resend.dev) can only send to your account email (${adminRecipients.join(', ')}). To send emails to all participant addresses, add and verify your custom domain (e.g. sanctuarycov.org) in the Resend Dashboard.`;
+    } else if (resendMessage.includes('not verified') || resendMessage.includes('domain')) {
+      userFacingNotice = `Resend Domain Notice: ${resendMessage}. Please verify your domain in Resend Dashboard or set RESEND_FROM_EMAIL to a verified address in Netlify Site Settings.`;
+    }
+
     return {
-      statusCode: 200,
+      statusCode: resendResponse.status || 422,
       headers: CORS_HEADERS,
       body: JSON.stringify({
-        success: true,
-        mode: "netlify_function_resend",
-        message: `Results emailed to ${email} and leadership contacts!`,
-        data: resendData
+        error: userFacingNotice,
+        rawError: resendData
       })
     };
   } catch (err) {
+    console.error(`[Send-Results Exception]`, err);
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
