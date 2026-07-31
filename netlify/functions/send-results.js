@@ -1,16 +1,61 @@
 // Netlify Serverless Function for Email Dispatch
 // Automatically handles POST /api/send-results when deployed on Netlify
+const https = require('https');
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Content-Type": "application/json"
+};
+
+function sendResendApiRequest(apiKey, emailData) {
+  return new Promise((resolve, reject) => {
+    const postData = JSON.stringify(emailData);
+    const options = {
+      hostname: 'api.resend.com',
+      path: '/emails',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey.trim()}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => {
+        let parsed = {};
+        try {
+          parsed = JSON.parse(body);
+        } catch (e) {
+          parsed = { rawBody: body };
+        }
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          data: parsed
+        });
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}
 
 exports.handler = async (event) => {
-  // Always handle OPTIONS preflight for CORS if needed
+  // Always handle OPTIONS preflight for CORS
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Methods": "POST, OPTIONS"
-      },
+      headers: CORS_HEADERS,
       body: ""
     };
   }
@@ -18,29 +63,40 @@ exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return {
       statusCode: 405,
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: "Method Not Allowed. Use POST." })
     };
   }
 
   try {
-    const payload = JSON.parse(event.body || "{}");
-    const { name, email, topGifts, topMinistryMatches, timestamp } = payload;
-
-    if (!email) {
+    let payload = {};
+    try {
+      payload = JSON.parse(event.body || "{}");
+    } catch (parseErr) {
       return {
         statusCode: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ error: "Invalid JSON request body." })
+      };
+    }
+
+    const { name, email, topGifts, topMinistryMatches, timestamp } = payload;
+
+    if (!email || !email.trim()) {
+      return {
+        statusCode: 400,
+        headers: CORS_HEADERS,
         body: JSON.stringify({ error: "User email address is required." })
       };
     }
 
-    const resendApiKey = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
+    const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || "").trim();
     if (!resendApiKey) {
       return {
-        statusCode: 500,
-        headers: { "Content-Type": "application/json" },
+        statusCode: 400,
+        headers: CORS_HEADERS,
         body: JSON.stringify({
-          error: "RESEND_API_KEY environment variable is not set in Netlify. Please add RESEND_API_KEY under Site settings > Environment variables."
+          error: "RESEND_API_KEY is not configured in Netlify Environment Variables. Please add RESEND_API_KEY in Netlify Site Settings > Environment Variables."
         })
       };
     }
@@ -56,52 +112,43 @@ exports.handler = async (event) => {
 
     const htmlContent = generateResultsEmailHtml({
       name: name || "Anonymous Participant",
-      email,
+      email: email.trim(),
       timestamp: timestamp || new Date().toISOString(),
       topGifts: topGifts || [],
       topMinistryMatches: topMinistryMatches || []
     });
 
-    const resendResponse = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${resendApiKey.trim()}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: allRecipients,
-        subject: `Soul Discovery Results: ${name || 'Participant'} (${email})`,
-        html: htmlContent
-      })
+    const resendResult = await sendResendApiRequest(resendApiKey, {
+      from: fromEmail,
+      to: allRecipients,
+      subject: `Soul Discovery Results: ${name || 'Participant'} (${email})`,
+      html: htmlContent
     });
 
-    const resendData = await resendResponse.json();
-
-    if (!resendResponse.ok) {
+    if (!resendResult.ok) {
       return {
-        statusCode: resendResponse.status,
-        headers: { "Content-Type": "application/json" },
+        statusCode: resendResult.status || 400,
+        headers: CORS_HEADERS,
         body: JSON.stringify({
-          error: resendData.message || resendData.error || `Resend API returned HTTP ${resendResponse.status}`
+          error: resendResult.data.message || resendResult.data.error || `Resend API returned status ${resendResult.status}`
         })
       };
     }
 
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: CORS_HEADERS,
       body: JSON.stringify({
         success: true,
         mode: "netlify_function_resend",
         message: `Results emailed to ${email} and leadership contacts!`,
-        data: resendData
+        data: resendResult.data
       })
     };
   } catch (err) {
     return {
       statusCode: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: err.message || "Failed to execute email dispatch function" })
     };
   }
