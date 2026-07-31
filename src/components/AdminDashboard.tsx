@@ -67,15 +67,19 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const fetchErrorLogs = async () => {
     setIsLoadingLogs(true);
+    const apiBase = import.meta.env.VITE_API_URL || '';
     try {
       // 1. First try server endpoint which bypasses client auth constraints
-      const res = await fetch('/api/error-logs');
+      const res = await fetch(`${apiBase}/api/error-logs`);
       if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.logs)) {
-          setErrorLogs(data.logs);
-          setIsLoadingLogs(false);
-          return;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (Array.isArray(data.logs)) {
+            setErrorLogs(data.logs);
+            setIsLoadingLogs(false);
+            return;
+          }
         }
       }
     } catch (apiErr) {
@@ -142,8 +146,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   // Load email configuration from server
   const loadEmailConfig = async () => {
+    const apiBase = import.meta.env.VITE_API_URL || '';
     try {
-      const res = await fetch('/api/email-config');
+      const res = await fetch(`${apiBase}/api/email-config`);
       if (res.ok) {
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
@@ -161,8 +166,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   // Load admin configuration from server
   const loadAdminConfig = async () => {
+    const apiBase = import.meta.env.VITE_API_URL || '';
     try {
-      const res = await fetch('/api/admin-config');
+      const res = await fetch(`${apiBase}/api/admin-config`);
       if (res.ok) {
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
@@ -212,8 +218,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     }
     setIsSavingAdmins(true);
     setAdminSaveSuccess(false);
+    const apiBase = import.meta.env.VITE_API_URL || '';
     try {
-      const res = await fetch('/api/admin-config', {
+      const res = await fetch(`${apiBase}/api/admin-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ admins: adminEmails })
@@ -223,7 +230,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         setTimeout(() => setAdminSaveSuccess(false), 4000);
       } else {
         const contentType = res.headers.get('content-type') || '';
-        let errMessage = 'Server error';
+        let errMessage = 'Server endpoint not found on static host.';
         if (contentType.includes('application/json')) {
           try {
             const data = await res.json();
@@ -261,8 +268,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const handleSaveRecipients = async () => {
     setIsSavingEmails(true);
     setEmailSaveSuccess(false);
+    const apiBase = import.meta.env.VITE_API_URL || '';
     try {
-      const res = await fetch('/api/email-config', {
+      const res = await fetch(`${apiBase}/api/email-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipients: emailRecipients })
@@ -283,8 +291,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     const target = testEmailAddress.trim() || emailRecipients[0] || 'cdonyi@gmail.com';
     setIsTestingEmail(true);
     setTestEmailResult(null);
+    const apiBase = import.meta.env.VITE_API_URL || '';
     try {
-      const res = await fetch('/api/test-email', {
+      const res = await fetch(`${apiBase}/api/test-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetEmail: target })
@@ -298,7 +307,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
           setTestEmailResult(`Error: ${data.error || 'Failed to send test email.'}`);
         }
       } else {
-        setTestEmailResult(`Error: Server returned non-JSON response (${res.status} ${res.statusText}). Make sure backend API server is running.`);
+        setTestEmailResult(`404 Not Found: Netlify is running in static frontend mode. To enable backend email sending, deploy server.ts (e.g. to Cloud Run) and set VITE_API_URL or a Netlify proxy rule.`);
       }
     } catch (err: any) {
       setTestEmailResult(`Error: ${err.message || 'Connection failed'}`);
@@ -308,8 +317,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   };
 
   const handleTriggerTestLog = async () => {
+    const apiBase = import.meta.env.VITE_API_URL || '';
     try {
-      const res = await fetch('/api/trigger-test-error-log', {
+      const res = await fetch(`${apiBase}/api/trigger-test-error-log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -318,12 +328,13 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
           message: 'Test log created from Admin Dashboard to initialize and verify the error_logs collection in Firestore.'
         })
       });
-      const data = await res.json();
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
         alert('Successfully written test entry to Firestore error_logs collection!');
         fetchErrorLogs();
       } else {
-        alert(`Error: ${data.error || 'Failed to create test log.'}`);
+        alert('API route unavailable on static frontend host. (Logs can still be viewed via Firestore).');
       }
     } catch (err: any) {
       alert(`Error triggering test log: ${err.message}`);
@@ -1036,13 +1047,26 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             </div>
 
             {/* Setup & Integration Instructions */}
-            <div className="bg-brand-surface rounded-[2.5rem] p-8 border border-brand-border">
-              <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-accent-gold mb-3">Sending Real Emails Automatically</h4>
-              <p className="text-xs text-brand-muted leading-relaxed mb-4">
-                This applet uses an Express backend API route (<code>/api/send-results</code>) with Nodemailer. You can automatically dispatch emails through any SMTP server or API service by setting environment variables in your deployment environment:
+            <div className="bg-brand-surface rounded-[2.5rem] p-8 border border-brand-border space-y-4">
+              <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-accent-gold">Sending Real Emails Automatically</h4>
+              <p className="text-xs text-brand-muted leading-relaxed">
+                This applet includes an Express backend server (<code>server.ts</code>) with Nodemailer route <code>/api/send-results</code>.
               </p>
 
-              <div className="grid md:grid-cols-2 gap-4 text-xs">
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 leading-relaxed space-y-2">
+                <span className="font-bold flex items-center gap-1.5 text-amber-900">
+                  <AlertTriangle className="w-4 h-4 text-amber-700" />
+                  Deploying on Static Hosts like Netlify:
+                </span>
+                <p>
+                  Netlify serves the frontend as a static site. To route <code>/api/*</code> requests to an active backend Express server, set your backend server URL in the <code>VITE_API_URL</code> environment variable on Netlify (e.g. <code>VITE_API_URL=https://your-backend.run.app</code>) or add a redirect proxy rule in your Netlify configuration (<code>public/_redirects</code>):
+                </p>
+                <pre className="text-[10px] font-mono bg-white p-3 rounded-xl border border-amber-200 text-amber-950 overflow-x-auto">
+{`/api/*   https://your-backend-express-service.run.app/api/:splat   200!`}
+                </pre>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4 text-xs pt-2">
                 <div className="p-4 bg-white rounded-2xl border border-brand-border">
                   <span className="font-bold text-brand-text block mb-1">Option 1: Standard SMTP (Gmail, Microsoft 365, Amazon SES)</span>
                   <pre className="text-[10px] font-mono text-brand-muted bg-brand-surface p-3 rounded-xl overflow-x-auto">

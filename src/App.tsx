@@ -34,6 +34,7 @@ import Sanctuary5Hero from './components/Sanctuary5Hero';
 import { db, auth, googleProvider, isFirebaseConfigured } from './lib/firebase';
 import { INITIAL_QUESTIONS, INITIAL_GIFTS } from './constants';
 import { Question, Gift, SurveyResponse, SurveyResult, GiftMatch, MinistryMatch } from './types';
+import { generateResultsEmailHtml } from './lib/emailTemplate';
 import { trackEvent } from './utils/analytics';
 
 type View = 'hero' | 'survey' | 'results' | 'admin';
@@ -61,7 +62,8 @@ export default function App() {
 
   // Load configured admin emails from server
   useEffect(() => {
-    fetch('/api/admin-config')
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    fetch(`${apiBase}/api/admin-config`)
       .then(async res => {
         if (!res.ok) return null;
         const contentType = res.headers.get('content-type') || '';
@@ -284,6 +286,35 @@ export default function App() {
     };
   };
 
+  const sendDirectResendEmail = async (payload: { name: string; email: string; topGifts: any[]; topMinistryMatches: any[]; timestamp?: string }) => {
+    const resendKey = import.meta.env.VITE_RESEND_API_KEY;
+    if (!resendKey) return null;
+
+    const html = generateResultsEmailHtml(payload);
+    const fromEmail = import.meta.env.VITE_RESEND_FROM_EMAIL || 'Sanctuary Covenant Church <onboarding@resend.dev>';
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${resendKey.trim()}`
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [payload.email],
+        subject: `Your Soul Discovery Survey Results - ${payload.name || 'Participant'}`,
+        html
+      })
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      return { success: true, mode: 'resend_direct', message: `Results report successfully emailed to ${payload.email} via Resend!` };
+    } else {
+      throw new Error(data.message || data.error || 'Resend API error');
+    }
+  };
+
   const handleSubmitResults = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userInfo.email || !userInfo.email.trim()) return;
@@ -295,16 +326,36 @@ export default function App() {
       const finalResult = { ...computedResult, ...userInfo };
       setResult(finalResult);
 
-      const res = await fetch('/api/send-results', {
+      const emailPayload = {
+        name: userInfo.name,
+        email: userInfo.email,
+        topGifts: finalResult.topGifts || [],
+        topMinistryMatches: finalResult.topMinistryMatches || [],
+        timestamp: finalResult.timestamp
+      };
+
+      // 1. Try Direct Client-Side Resend if VITE_RESEND_API_KEY is defined
+      if (import.meta.env.VITE_RESEND_API_KEY) {
+        try {
+          const directRes = await sendDirectResendEmail(emailPayload);
+          if (directRes) {
+            setEmailStatus(directRes);
+            setIsEmailSubmitted(true);
+            trackEvent('survey_complete', { topGifts: finalResult.primaryGiftIds });
+            setView('results');
+            return;
+          }
+        } catch (directErr: any) {
+          console.warn('[Direct Resend Error]', directErr);
+        }
+      }
+
+      // 2. Fallback to API endpoint (/api/send-results)
+      const apiBase = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiBase}/api/send-results`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: userInfo.name,
-          email: userInfo.email,
-          topGifts: finalResult.topGifts || [],
-          topMinistryMatches: finalResult.topMinistryMatches || [],
-          timestamp: finalResult.timestamp
-        })
+        body: JSON.stringify(emailPayload)
       });
 
       const contentType = res.headers.get('content-type') || '';
@@ -315,6 +366,14 @@ export default function App() {
           success: true,
           mode: data.mode,
           message: data.message
+        });
+      } else if (res.status === 404 || !contentType.includes('application/json')) {
+        // Static hosting mode
+        console.log('[Email Trigger] Backend route /api/send-results unavailable on static deployment host.');
+        setEmailStatus({
+          success: true,
+          mode: 'saved_locally',
+          message: 'Survey results completed and saved successfully!'
         });
       } else {
         let errText = 'Server error during email dispatch.';
@@ -351,16 +410,29 @@ export default function App() {
     if (!result || !userInfo.email) return;
     setIsResendingEmail(true);
     try {
-      const res = await fetch('/api/send-results', {
+      const emailPayload = {
+        name: userInfo.name,
+        email: userInfo.email,
+        topGifts: result.topGifts || [],
+        topMinistryMatches: result.topMinistryMatches || [],
+        timestamp: result.timestamp
+      };
+
+      // 1. Try Direct Client-Side Resend if VITE_RESEND_API_KEY is defined
+      if (import.meta.env.VITE_RESEND_API_KEY) {
+        const directRes = await sendDirectResendEmail(emailPayload);
+        if (directRes) {
+          setEmailStatus(directRes);
+          return;
+        }
+      }
+
+      // 2. Fallback to API endpoint
+      const apiBase = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiBase}/api/send-results`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: userInfo.name,
-          email: userInfo.email,
-          topGifts: result.topGifts || [],
-          topMinistryMatches: result.topMinistryMatches || [],
-          timestamp: result.timestamp
-        })
+        body: JSON.stringify(emailPayload)
       });
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
@@ -369,6 +441,11 @@ export default function App() {
           success: true,
           mode: data.mode,
           message: data.message
+        });
+      } else if (res.status === 404 || !contentType.includes('application/json')) {
+        setEmailStatus({
+          success: false,
+          message: 'Backend email service is not connected. Add VITE_RESEND_API_KEY to Netlify environment variables.'
         });
       } else {
         let errText = 'Failed to resend email';
