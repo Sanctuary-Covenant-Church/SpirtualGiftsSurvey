@@ -1,16 +1,16 @@
 [build]
   publish = "dist"
   command = "npm run build"
+  functions = "netlify/functions"
+
+# Route /api/send-results to Netlify Serverless Function
+[[redirects]]
+  from = "/api/send-results"
+  to = "/.netlify/functions/send-results"
+  status = 200
 
 # SPA Fallback Rule
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
-# Optional API Proxy Rule (Uncomment and replace 'to' URL if server.ts is deployed on Cloud Run, Render, or Railway)
-# [[redirects]]
-#   from = "/api/*"
-#   to = "https://your-express-backend.run.app/api/:splat"
-#   status = 200
-#   force = true
