@@ -63,6 +63,7 @@ export default function App() {
   // Load configured admin emails from server
   useEffect(() => {
     const apiBase = import.meta.env.VITE_API_URL || '';
+    if (!apiBase) return;
     fetch(`${apiBase}/api/admin-config`)
       .then(async res => {
         if (!res.ok) return null;
