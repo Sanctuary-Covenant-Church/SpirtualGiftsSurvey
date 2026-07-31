@@ -391,7 +391,7 @@ export default function App() {
       } else if (res.status === 404 || !contentType.includes('application/json')) {
         setEmailStatus({
           success: false,
-          message: 'Backend email service is not connected. Add VITE_RESEND_API_KEY to Netlify environment variables.'
+          message: 'Backend email service is not connected yet. Push your latest code to Netlify and add RESEND_API_KEY to Netlify Site Environment Variables.'
         });
       } else {
         let errText = 'Failed to resend email';
