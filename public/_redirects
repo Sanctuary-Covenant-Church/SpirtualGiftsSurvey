@@ -1,8 +1,9 @@
 # Netlify Redirects File for Single Page Application (SPA) Routing & API Proxying
 
-# If your Express Node server (server.ts) is deployed separately (e.g. on Google Cloud Run, Render, or Railway),
-# proxy /api/* requests to your backend server URL by setting the target URL below:
-# /api/*  https://your-backend-api-url.run.app/api/:splat  200!
+# Route Netlify Serverless Functions
+/api/send-results    /.netlify/functions/send-results    200!
+/api/*               /.netlify/functions/:splat          200!
 
 # SPA Client-Side Routing Fallback (Direct all page routes to index.html)
 /*    /index.html   200
+
