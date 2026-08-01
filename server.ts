@@ -32,6 +32,7 @@ function getDatabaseId(): string {
 // Helper to log detailed errors to Firebase Firestore and server console
 async function logErrorToFirebase(context: string, err: any, metadata: Record<string, any> = {}) {
   const errorMessage = err?.message || String(err);
+  const isTest = metadata?.isTest || context.includes("Test") || context.includes("Boot");
   const errorDetails = {
     context,
     message: errorMessage,
@@ -40,8 +41,12 @@ async function logErrorToFirebase(context: string, err: any, metadata: Record<st
     timestamp: new Date().toISOString()
   };
 
-  // Always log full detailed error to server console for container log visibility
-  console.error(`[SERVER ERROR LOG] [${context}]`, JSON.stringify(errorDetails, null, 2));
+  // Log to console - use console.info for intentional test verifications, console.error for true application errors
+  if (isTest) {
+    console.info(`[SERVER TEST LOG] [${context}] ${errorMessage}`);
+  } else {
+    console.error(`[SERVER ERROR LOG] [${context}]`, JSON.stringify(errorDetails, null, 2));
+  }
 
   // Attempt writing to Firestore error_logs collection
   const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
@@ -64,13 +69,13 @@ async function logErrorToFirebase(context: string, err: any, metadata: Record<st
         })
       });
       if (response.ok) {
-        console.log(`[FIREBASE ERROR LOG] Successfully logged error to Firestore error_logs collection.`);
+        console.log(`[FIREBASE LOG] Successfully written to Firestore error_logs collection.`);
       } else {
         const respText = await response.text();
-        console.warn(`[FIREBASE ERROR LOG NOTICE] Firestore write status ${response.status}: ${respText}`);
+        console.warn(`[FIREBASE LOG NOTICE] Firestore write status ${response.status}: ${respText}`);
       }
     } catch (fbErr) {
-      console.error(`[FIREBASE ERROR LOG FAILED] Could not write error log to Firestore:`, fbErr);
+      console.error(`[FIREBASE LOG FAILED] Could not write log to Firestore:`, fbErr);
     }
   }
 }
@@ -728,10 +733,6 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    // Log system boot event to ensure Firestore error_logs collection is initialized
-    logErrorToFirebase("System Service Boot", new Error("Server started and error logging pipeline initialized successfully."), {
-      environment: process.env.NODE_ENV || "development"
-    }).catch(() => {});
   });
 }
 

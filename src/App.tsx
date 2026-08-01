@@ -31,7 +31,7 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import Layout from './components/Layout';
 import AdminDashboard from './components/AdminDashboard';
 import Sanctuary5Hero from './components/Sanctuary5Hero';
-import { db, auth, googleProvider, isFirebaseConfigured } from './lib/firebase';
+import { db, auth, googleProvider, isFirebaseConfigured, firebaseProjectId } from './lib/firebase';
 import { INITIAL_QUESTIONS, INITIAL_GIFTS } from './constants';
 import { Question, Gift, SurveyResponse, SurveyResult, GiftMatch, MinistryMatch } from './types';
 import { generateResultsEmailHtml } from './lib/emailTemplate';
