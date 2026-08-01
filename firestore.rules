@@ -32,7 +32,9 @@ service cloud.firestore {
       function isValidGift(data) {
         return data.id is string && data.id.size() <= 64 &&
                data.name is string && data.name.size() <= 128 &&
-               data.description is string && data.description.size() <= 2000;
+               data.description is string && data.description.size() <= 2000 &&
+               (!('scripture' in data) || (data.scripture is string && data.scripture.size() <= 256)) &&
+               (!('serviceTeams' in data) || (data.serviceTeams is list && data.serviceTeams.size() <= 50));
       }
       
       allow create: if isAdmin() && isValidGift(incoming()) && isValidId(giftId);
