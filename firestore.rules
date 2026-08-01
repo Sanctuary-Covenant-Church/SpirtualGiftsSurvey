@@ -76,6 +76,11 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
+    // Settings (Configurable system settings like email recipients and admins)
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
+
     // Admins (Only admins can manage admins)
     match /admins/{userId} {
       allow read: if isAdmin();

@@ -21,6 +21,14 @@ function ensureDataDir() {
   }
 }
 
+function getDatabaseId(): string {
+  const dbId = process.env.VITE_FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID;
+  if (dbId && dbId !== 'YOUR_FIRESTORE_DATABASE_ID' && !dbId.startsWith('G-')) {
+    return dbId;
+  }
+  return '(default)';
+}
+
 // Helper to log detailed errors to Firebase Firestore and server console
 async function logErrorToFirebase(context: string, err: any, metadata: Record<string, any> = {}) {
   const errorMessage = err?.message || String(err);
@@ -38,7 +46,7 @@ async function logErrorToFirebase(context: string, err: any, metadata: Record<st
   // Attempt writing to Firestore error_logs collection
   const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
   const apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
-  const databaseId = process.env.VITE_FIREBASE_DATABASE_ID || "(default)";
+  const databaseId = getDatabaseId();
 
   if (projectId) {
     try {
@@ -50,7 +58,7 @@ async function logErrorToFirebase(context: string, err: any, metadata: Record<st
           fields: {
             context: { stringValue: context },
             message: { stringValue: errorMessage },
-            details: { stringValue: JSON.stringify(metadata) },
+            details: { stringValue: typeof metadata === 'string' ? metadata : JSON.stringify(metadata) },
             timestamp: { stringValue: new Date().toISOString() }
           }
         })
@@ -67,34 +75,151 @@ async function logErrorToFirebase(context: string, err: any, metadata: Record<st
   }
 }
 
-// Load recipient emails
-function getStoredRecipients(): string[] {
+// Firestore REST API helpers for server-side persistence
+async function getFirestoreDoc(collectionName: string, docId: string) {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+  const apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
+  const databaseId = getDatabaseId();
+
+  if (!projectId) return null;
+
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/${collectionName}/${docId}${apiKey ? `?key=${apiKey}` : ''}`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    console.warn(`[FIRESTORE REST] Error reading ${collectionName}/${docId}:`, err);
+    return null;
+  }
+}
+
+async function setFirestoreDoc(collectionName: string, docId: string, fields: Record<string, any>) {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+  const apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
+  const databaseId = getDatabaseId();
+
+  if (!projectId) return false;
+
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/${collectionName}/${docId}${apiKey ? `?key=${apiKey}` : ''}`;
+    
+    const formattedFields: Record<string, any> = {};
+    for (const [key, val] of Object.entries(fields)) {
+      if (Array.isArray(val)) {
+        formattedFields[key] = {
+          arrayValue: {
+            values: val.map(v => ({ stringValue: String(v) }))
+          }
+        };
+      } else if (typeof val === 'string') {
+        formattedFields[key] = { stringValue: val };
+      } else if (typeof val === 'number') {
+        formattedFields[key] = { doubleValue: val };
+      } else if (typeof val === 'boolean') {
+        formattedFields[key] = { booleanValue: val };
+      }
+    }
+
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: formattedFields })
+    });
+
+    if (response.ok) {
+      console.log(`[FIRESTORE REST] Successfully saved ${collectionName}/${docId}`);
+      return true;
+    } else {
+      const text = await response.text();
+      console.warn(`[FIRESTORE REST] Failed to save ${collectionName}/${docId} (${response.status}):`, text);
+      return false;
+    }
+  } catch (err) {
+    console.error(`[FIRESTORE REST] Error writing ${collectionName}/${docId}:`, err);
+    return false;
+  }
+}
+
+function parseFirestoreDoc(docData: any): Record<string, any> | null {
+  if (!docData || !docData.fields) return null;
+  const result: Record<string, any> = {};
+  for (const [key, fieldObj] of Object.entries(docData.fields as Record<string, any>)) {
+    if (fieldObj.stringValue !== undefined) {
+      result[key] = fieldObj.stringValue;
+    } else if (fieldObj.arrayValue !== undefined) {
+      result[key] = (fieldObj.arrayValue.values || []).map((v: any) => v.stringValue || v.integerValue || v.doubleValue || v);
+    } else if (fieldObj.integerValue !== undefined) {
+      result[key] = parseInt(fieldObj.integerValue, 10);
+    } else if (fieldObj.doubleValue !== undefined) {
+      result[key] = fieldObj.doubleValue;
+    } else if (fieldObj.booleanValue !== undefined) {
+      result[key] = fieldObj.booleanValue;
+    }
+  }
+  return result;
+}
+
+// Load recipient emails from Firestore or local fallback
+async function getStoredRecipients(): Promise<string[]> {
+  try {
+    const docData = await getFirestoreDoc("settings", "email");
+    const parsed = parseFirestoreDoc(docData);
+    if (parsed && Array.isArray(parsed.recipients) && parsed.recipients.length > 0) {
+      return parsed.recipients;
+    }
+  } catch (err) {
+    console.warn("Could not read recipients from Firestore, trying local file fallback:", err);
+  }
+
   try {
     ensureDataDir();
     if (fs.existsSync(RECIPIENTS_FILE)) {
       const raw = fs.readFileSync(RECIPIENTS_FILE, "utf8");
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.recipients)) {
+      if (Array.isArray(parsed.recipients) && parsed.recipients.length > 0) {
         return parsed.recipients;
       }
     }
   } catch (err) {
     console.error("Failed to load recipients file:", err);
   }
-  // Default fallback list
+
   return ["cdonyi@gmail.com", "siona@sanctuarycov.org"];
 }
 
-// Save recipient emails
-function saveStoredRecipients(recipients: string[]) {
-  ensureDataDir();
+// Save recipient emails to Firestore and local fallback
+async function saveStoredRecipients(recipients: string[]): Promise<string[]> {
   const clean = Array.from(new Set(recipients.map(e => e.trim().toLowerCase()))).filter(Boolean);
-  fs.writeFileSync(RECIPIENTS_FILE, JSON.stringify({ recipients: clean, lastUpdated: new Date().toISOString() }, null, 2));
+  
+  await setFirestoreDoc("settings", "email", {
+    recipients: clean,
+    lastUpdated: new Date().toISOString()
+  });
+
+  try {
+    ensureDataDir();
+    fs.writeFileSync(RECIPIENTS_FILE, JSON.stringify({ recipients: clean, lastUpdated: new Date().toISOString() }, null, 2));
+  } catch (err) {
+    console.warn("Failed writing local recipients cache:", err);
+  }
+
   return clean;
 }
 
-// Load authorized admin emails
-function getStoredAdmins(): string[] {
+// Load authorized admin emails from Firestore or local fallback
+async function getStoredAdmins(): Promise<string[]> {
+  try {
+    const docData = await getFirestoreDoc("settings", "admins");
+    const parsed = parseFirestoreDoc(docData);
+    if (parsed && Array.isArray(parsed.admins) && parsed.admins.length > 0) {
+      return parsed.admins;
+    }
+  } catch (err) {
+    console.warn("Could not read admins from Firestore, trying local file fallback:", err);
+  }
+
   try {
     ensureDataDir();
     if (fs.existsSync(ADMINS_FILE)) {
@@ -107,15 +232,26 @@ function getStoredAdmins(): string[] {
   } catch (err) {
     console.error("Failed to load admins file:", err);
   }
-  // Default fallback list
+
   return ["cdonyi@gmail.com", "sanctuarycovdeveloper@gmail.com", "siona@sanctuarycov.org"];
 }
 
-// Save authorized admin emails
-function saveStoredAdmins(admins: string[]) {
-  ensureDataDir();
+// Save authorized admin emails to Firestore and local fallback
+async function saveStoredAdmins(admins: string[]): Promise<string[]> {
   const clean = Array.from(new Set(admins.map(e => e.trim().toLowerCase()))).filter(Boolean);
-  fs.writeFileSync(ADMINS_FILE, JSON.stringify({ admins: clean, lastUpdated: new Date().toISOString() }, null, 2));
+
+  await setFirestoreDoc("settings", "admins", {
+    admins: clean,
+    lastUpdated: new Date().toISOString()
+  });
+
+  try {
+    ensureDataDir();
+    fs.writeFileSync(ADMINS_FILE, JSON.stringify({ admins: clean, lastUpdated: new Date().toISOString() }, null, 2));
+  } catch (err) {
+    console.warn("Failed writing local admins cache:", err);
+  }
+
   return clean;
 }
 
@@ -152,9 +288,9 @@ async function startServer() {
   });
 
   // GET /api/email-config
-  app.get("/api/email-config", (req, res) => {
+  app.get("/api/email-config", async (req, res) => {
     try {
-      const recipients = getStoredRecipients();
+      const recipients = await getStoredRecipients();
       const hasSmtp = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
       const hasResend = Boolean(process.env.RESEND_API_KEY);
       const hasSendGrid = Boolean(process.env.SENDGRID_API_KEY);
@@ -183,7 +319,7 @@ async function startServer() {
       if (!Array.isArray(recipients)) {
         return res.status(400).json({ error: "Recipients must be an array of email strings." });
       }
-      const updated = saveStoredRecipients(recipients);
+      const updated = await saveStoredRecipients(recipients);
       res.json({ success: true, recipients: updated });
     } catch (err: any) {
       await logErrorToFirebase("POST /api/email-config", err);
@@ -192,9 +328,9 @@ async function startServer() {
   });
 
   // GET /api/admin-config
-  app.get("/api/admin-config", (req, res) => {
+  app.get("/api/admin-config", async (req, res) => {
     try {
-      const admins = getStoredAdmins();
+      const admins = await getStoredAdmins();
       res.json({ admins });
     } catch (err: any) {
       logErrorToFirebase("GET /api/admin-config", err);
@@ -212,7 +348,7 @@ async function startServer() {
       if (admins.length === 0) {
         return res.status(400).json({ error: "Admin list cannot be empty. At least one administrator email is required." });
       }
-      const updated = saveStoredAdmins(admins);
+      const updated = await saveStoredAdmins(admins);
       res.json({ success: true, admins: updated });
     } catch (err: any) {
       await logErrorToFirebase("POST /api/admin-config", err);
@@ -230,7 +366,7 @@ async function startServer() {
       }
 
       // Configured admin notification recipient list
-      const adminRecipients = getStoredRecipients();
+      const adminRecipients = await getStoredRecipients();
       
       // Combine user email and admin recipients (deduplicated)
       const allRecipients = Array.from(new Set([
@@ -508,11 +644,24 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // POST /api/log-error - Client-side error reporting endpoint
+  app.post("/api/log-error", async (req, res) => {
+    try {
+      const { context, message, details, metadata } = req.body || {};
+      const errContext = context || "Client Application Error";
+      const errMsg = message || "An error occurred on the client application.";
+      await logErrorToFirebase(errContext, new Error(errMsg), details || metadata || {});
+      res.json({ success: true, message: "Error logged successfully" });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to log error" });
+    }
+  });
+
   // GET /api/error-logs - Retrieve error logs directly from Firestore REST API
   app.get("/api/error-logs", async (req, res) => {
     const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
     const apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
-    const databaseId = process.env.VITE_FIREBASE_DATABASE_ID || "(default)";
+    const databaseId = getDatabaseId();
 
     if (!projectId) {
       return res.json({ logs: [] });

@@ -153,14 +153,22 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
           const data = await res.json();
-          if (Array.isArray(data.recipients)) {
+          if (Array.isArray(data.recipients) && data.recipients.length > 0) {
             setEmailRecipients(data.recipients);
+            localStorage.setItem('sanctuary_recipients', JSON.stringify(data.recipients));
+            setEmailServerStatus(data);
+            return;
           }
-          setEmailServerStatus(data);
         }
       }
     } catch (err) {
-      // Silently ignore fetch errors on static hosts like Netlify
+      // Silently fallback to local storage
+    }
+    const local = localStorage.getItem('sanctuary_recipients');
+    if (local) {
+      try {
+        setEmailRecipients(JSON.parse(local));
+      } catch {}
     }
   };
 
@@ -173,13 +181,21 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
           const data = await res.json();
-          if (Array.isArray(data.admins)) {
+          if (Array.isArray(data.admins) && data.admins.length > 0) {
             setAdminEmails(data.admins);
+            localStorage.setItem('sanctuary_admins', JSON.stringify(data.admins));
+            return;
           }
         }
       }
     } catch (err) {
-      // Silently ignore fetch errors on static hosts like Netlify
+      // Silently fallback to local storage
+    }
+    const local = localStorage.getItem('sanctuary_admins');
+    if (local) {
+      try {
+        setAdminEmails(JSON.parse(local));
+      } catch {}
     }
   };
 
@@ -188,7 +204,29 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     loadAdminConfig();
   }, []);
 
-  const handleAddAdmin = (e: React.FormEvent) => {
+  const saveAdminEmails = async (updatedList: string[]) => {
+    setIsSavingAdmins(true);
+    setAdminSaveSuccess(false);
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    localStorage.setItem('sanctuary_admins', JSON.stringify(updatedList));
+    try {
+      const res = await fetch(`${apiBase}/api/admin-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admins: updatedList })
+      });
+      if (res.ok) {
+        setAdminSaveSuccess(true);
+        setTimeout(() => setAdminSaveSuccess(false), 3000);
+      }
+    } catch (err) {
+      console.warn('Could not sync admin list to backend endpoint:', err);
+    } finally {
+      setIsSavingAdmins(false);
+    }
+  };
+
+  const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = newAdminInput.trim().toLowerCase();
     if (!clean || !clean.includes('@')) {
@@ -199,91 +237,73 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       alert('Email address is already in the administrator list.');
       return;
     }
-    setAdminEmails([...adminEmails, clean]);
+    const updated = [...adminEmails, clean];
+    setAdminEmails(updated);
     setNewAdminInput('');
+    await saveAdminEmails(updated);
   };
 
-  const handleRemoveAdmin = (emailToRemove: string) => {
+  const handleRemoveAdmin = async (emailToRemove: string) => {
     if (adminEmails.length <= 1) {
       alert('Cannot remove the last administrator. At least one admin email address must remain.');
       return;
     }
-    setAdminEmails(adminEmails.filter(e => e.toLowerCase() !== emailToRemove.toLowerCase()));
+    const updated = adminEmails.filter(e => e.toLowerCase() !== emailToRemove.toLowerCase());
+    setAdminEmails(updated);
+    await saveAdminEmails(updated);
   };
 
   const handleSaveAdmins = async () => {
-    if (adminEmails.length === 0) {
-      alert('At least one administrator email address is required.');
-      return;
-    }
-    setIsSavingAdmins(true);
-    setAdminSaveSuccess(false);
+    await saveAdminEmails(adminEmails);
+  };
+
+  const saveEmailRecipients = async (updatedList: string[]) => {
+    setIsSavingEmails(true);
+    setEmailSaveSuccess(false);
     const apiBase = import.meta.env.VITE_API_URL || '';
+    localStorage.setItem('sanctuary_recipients', JSON.stringify(updatedList));
     try {
-      const res = await fetch(`${apiBase}/api/admin-config`, {
+      const res = await fetch(`${apiBase}/api/email-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admins: adminEmails })
+        body: JSON.stringify({ recipients: updatedList })
       });
       if (res.ok) {
-        setAdminSaveSuccess(true);
-        setTimeout(() => setAdminSaveSuccess(false), 4000);
-      } else {
-        const contentType = res.headers.get('content-type') || '';
-        let errMessage = 'Server endpoint not found on static host.';
-        if (contentType.includes('application/json')) {
-          try {
-            const data = await res.json();
-            if (data.error) errMessage = data.error;
-          } catch {}
-        }
-        alert(`Failed to save admin list: ${errMessage}`);
+        setEmailSaveSuccess(true);
+        setTimeout(() => setEmailSaveSuccess(false), 3000);
       }
     } catch (err) {
-      alert('Failed to save admin list.');
+      console.warn('Could not sync recipient list to backend endpoint:', err);
     } finally {
-      setIsSavingAdmins(false);
+      setIsSavingEmails(false);
     }
   };
 
-  const handleAddRecipient = (e: React.FormEvent) => {
+  const handleAddRecipient = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = newEmailInput.trim().toLowerCase();
     if (!clean || !clean.includes('@')) {
       alert('Please enter a valid email address.');
       return;
     }
-    if (emailRecipients.includes(clean)) {
+    if (emailRecipients.map(e => e.toLowerCase()).includes(clean)) {
       alert('Email address is already in the recipient list.');
       return;
     }
-    setEmailRecipients([...emailRecipients, clean]);
+    const updated = [...emailRecipients, clean];
+    setEmailRecipients(updated);
     setNewEmailInput('');
+    await saveEmailRecipients(updated);
   };
 
-  const handleRemoveRecipient = (emailToRemove: string) => {
-    setEmailRecipients(emailRecipients.filter(e => e !== emailToRemove));
+  const handleRemoveRecipient = async (emailToRemove: string) => {
+    const updated = emailRecipients.filter(e => e.toLowerCase() !== emailToRemove.toLowerCase());
+    setEmailRecipients(updated);
+    await saveEmailRecipients(updated);
   };
 
   const handleSaveRecipients = async () => {
-    setIsSavingEmails(true);
-    setEmailSaveSuccess(false);
-    const apiBase = import.meta.env.VITE_API_URL || '';
-    try {
-      const res = await fetch(`${apiBase}/api/email-config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipients: emailRecipients })
-      });
-      if (res.ok) {
-        setEmailSaveSuccess(true);
-        setTimeout(() => setEmailSaveSuccess(false), 4000);
-      }
-    } catch (err) {
-      alert('Failed to save email recipient list.');
-    } finally {
-      setIsSavingEmails(false);
-    }
+    await saveEmailRecipients(emailRecipients);
   };
 
   const handleSendTestEmail = async (e: React.FormEvent) => {
@@ -363,9 +383,34 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     };
     console.error('Firestore Error: ', JSON.stringify(errInfo));
     
+    // Log error to backend error_logs pipeline
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    fetch(`${apiBase}/api/log-error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        context: `Firestore Operation (${operationType} on ${path || 'unknown'})`,
+        message: errMsg,
+        details: errInfo
+      })
+    }).catch(() => {});
+
+    // Save locally
+    try {
+      const existing = JSON.parse(localStorage.getItem('sanctuary_error_logs') || '[]');
+      existing.unshift({
+        id: 'local-' + Date.now(),
+        context: `Firestore Error (${operationType} on ${path || 'unknown'})`,
+        message: errMsg,
+        details: JSON.stringify(errInfo),
+        timestamp: new Date().toISOString()
+      });
+      localStorage.setItem('sanctuary_error_logs', JSON.stringify(existing.slice(0, 50)));
+    } catch {}
+
     let userFriendly = errMsg;
     if (errMsg.includes('permission-denied') || errMsg.toLowerCase().includes('permission')) {
-      userFriendly = 'Permission Denied: Your custom Firestore security rules do not allow this operation. Please make sure to configure your Firestore Rules to allow read & write access (either via console.firebase.google.com in "Rules" or in test mode), and that your authenticated user email is authorized.';
+      userFriendly = 'Permission Denied: Your custom Firestore security rules do not allow this operation. Please make sure your authenticated user email is listed as an authorized administrator.';
     } else if (errMsg.includes('not-found') || errMsg.toLowerCase().includes('not found')) {
       userFriendly = `Resource not found: Could not load data from collection '${path}'.`;
     } else if (errMsg.toLowerCase().includes('index')) {
