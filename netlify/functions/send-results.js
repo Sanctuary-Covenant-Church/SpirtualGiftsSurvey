@@ -60,13 +60,23 @@ export const handler = async (event, context) => {
     }
 
     const fromEmail = process.env.RESEND_FROM_EMAIL || process.env.EMAIL_FROM || process.env.VITE_RESEND_FROM_EMAIL || "Sanctuary Covenant Church <onboarding@resend.dev>";
-    const adminRecipientsStr = process.env.NOTIFICATION_EMAILS || "cdonyi@gmail.com";
-    const adminRecipients = adminRecipientsStr.split(",").map(e => e.trim()).filter(Boolean);
+    
+    // Fetch recipient list directly from Firestore settings/email document
+    const firestoreRecipients = await fetchFirestoreRecipients();
+    const envRecipientsStr = process.env.NOTIFICATION_EMAILS || "";
+    const envRecipients = envRecipientsStr.split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+
+    // Combine participant email, Firestore recipients, and env recipients (deduplicated)
+    const adminRecipients = Array.from(new Set([
+      ...firestoreRecipients,
+      ...envRecipients,
+      "cdonyi@gmail.com"
+    ])).map(e => e.trim().toLowerCase()).filter(Boolean);
 
     const allRecipients = Array.from(new Set([
       email.trim().toLowerCase(),
       ...adminRecipients
-    ]));
+    ])).filter(Boolean);
 
     const htmlContent = generateResultsEmailHtml({
       name: name || "Anonymous Participant",
@@ -76,7 +86,9 @@ export const handler = async (event, context) => {
       topMinistryMatches: topMinistryMatches || []
     });
 
-    // 1. Primary Email Attempt (to all recipients)
+    const subject = `Soul Discovery Results: ${name || 'Participant'} (${email})`;
+
+    // 1. Primary Batch Email Attempt (to all recipients)
     let resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -86,14 +98,14 @@ export const handler = async (event, context) => {
       body: JSON.stringify({
         from: fromEmail,
         to: allRecipients,
-        subject: `Soul Discovery Results: ${name || 'Participant'} (${email})`,
+        subject,
         html: htmlContent
       })
     });
 
     let resendData = await resendResponse.json().catch(() => ({}));
 
-    // If primary attempt succeeded, return 200
+    // If primary batch attempt succeeded, return 200
     if (resendResponse.ok) {
       return {
         statusCode: 200,
@@ -101,82 +113,80 @@ export const handler = async (event, context) => {
         body: JSON.stringify({
           success: true,
           mode: "netlify_function_resend",
-          message: `Results emailed to ${email} and leadership contacts!`,
+          message: `Results successfully emailed to participant (${email}) and ${adminRecipients.length} configured recipient(s)!`,
+          recipients: allRecipients,
           data: resendData
         })
       };
     }
 
-    console.warn(`[Resend Primary Attempt Failed] Status: ${resendResponse.status}`, resendData);
+    console.warn(`[Resend Primary Batch Attempt Failed] Status: ${resendResponse.status}`, resendData);
 
-    // 2. Fallback Attempt A: If custom 'fromEmail' failed with 422 (e.g., unverified domain), retry with default onboarding@resend.dev
-    if (resendResponse.status === 422 && !fromEmail.includes('onboarding@resend.dev')) {
-      console.log('[Resend Fallback A] Retrying with default onboarding@resend.dev sender address...');
-      const fallbackFrom = "Sanctuary Covenant Church <onboarding@resend.dev>";
-      
-      const retryA = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          from: fallbackFrom,
-          to: allRecipients,
-          subject: `Soul Discovery Results: ${name || 'Participant'} (${email})`,
-          html: htmlContent
-        })
-      });
+    // 2. Individual Delivery Fallback (loop through each recipient individually)
+    // This overcomes free tier restrictions (e.g. onboarding@resend.dev) and domain verification rules per address
+    const successfulRecipients = [];
+    const failedRecipients = [];
 
-      const retryAData = await retryA.json().catch(() => ({}));
-      if (retryA.ok) {
-        return {
-          statusCode: 200,
-          headers: CORS_HEADERS,
+    for (const recipient of allRecipients) {
+      try {
+        const indResp = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json"
+          },
           body: JSON.stringify({
-            success: true,
-            mode: "netlify_function_resend_fallback",
-            message: `Results emailed to ${email}! (Note: Sent via default Resend sender because custom domain is not yet verified in Resend)`,
-            data: retryAData
+            from: fromEmail,
+            to: [recipient],
+            subject,
+            html: htmlContent
           })
-        };
+        });
+
+        if (indResp.ok) {
+          successfulRecipients.push(recipient);
+        } else {
+          // If custom domain fromEmail failed for this address, try default onboarding@resend.dev
+          if (!fromEmail.includes('onboarding@resend.dev')) {
+            const fallbackFrom = "Sanctuary Covenant Church <onboarding@resend.dev>";
+            const retryInd = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${resendApiKey}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                from: fallbackFrom,
+                to: [recipient],
+                subject,
+                html: htmlContent
+              })
+            });
+            if (retryInd.ok) {
+              successfulRecipients.push(recipient);
+              continue;
+            }
+          }
+          const errText = await indResp.text();
+          failedRecipients.push({ email: recipient, error: errText });
+        }
+      } catch (indErr) {
+        failedRecipients.push({ email: recipient, error: indErr.message || String(indErr) });
       }
-      console.warn(`[Resend Fallback A Failed] Status: ${retryA.status}`, retryAData);
     }
 
-    // 3. Fallback Attempt B: If 422 error is due to testing domain recipient limits (onboarding@resend.dev only allows sending to owner email)
-    if (resendResponse.status === 422 && adminRecipients.length > 0) {
-      console.log('[Resend Fallback B] Retrying email dispatch specifically to verified admin contacts...');
-      const fallbackFrom = "Sanctuary Covenant Church <onboarding@resend.dev>";
-      
-      const retryB = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json"
-        },
+    if (successfulRecipients.length > 0) {
+      return {
+        statusCode: 200,
+        headers: CORS_HEADERS,
         body: JSON.stringify({
-          from: fallbackFrom,
-          to: adminRecipients,
-          subject: `Soul Discovery Results: ${name || 'Participant'} (${email})`,
-          html: htmlContent
+          success: true,
+          mode: "netlify_function_resend_individual",
+          message: `Results emailed to ${successfulRecipients.length} of ${allRecipients.length} configured address(es).`,
+          recipients: successfulRecipients,
+          failedRecipients
         })
-      });
-
-      const retryBData = await retryB.json().catch(() => ({}));
-      if (retryB.ok) {
-        return {
-          statusCode: 200,
-          headers: CORS_HEADERS,
-          body: JSON.stringify({
-            success: true,
-            mode: "netlify_function_resend_admin",
-            message: `Results saved & sent to leadership (${adminRecipients.join(', ')}). Note: To enable direct participant emails, verify your domain in Resend dashboard.`,
-            data: retryBData
-          })
-        };
-      }
-      console.warn(`[Resend Fallback B Failed] Status: ${retryB.status}`, retryBData);
+      };
     }
 
     // 4. If all attempts fail, extract clear, actionable error message from Resend
@@ -347,4 +357,27 @@ function generateResultsEmailHtml(data) {
 </body>
 </html>
   `;
+}
+
+async function fetchFirestoreRecipients() {
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "ais-dev-bun6aislalbji7kh7as6y6";
+  const apiKey = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+  const databaseId = process.env.FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID || "(default)";
+
+  if (!projectId) return [];
+
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/settings/email${apiKey ? `?key=${apiKey}` : ''}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (data && data.fields && data.fields.recipients && data.fields.recipients.arrayValue && Array.isArray(data.fields.recipients.arrayValue.values)) {
+      return data.fields.recipients.arrayValue.values
+        .map(v => (v.stringValue || (typeof v === 'string' ? v : '')).trim().toLowerCase())
+        .filter(Boolean);
+    }
+  } catch (err) {
+    console.warn('[Firestore Recipients Fetch Error]', err);
+  }
+  return [];
 }

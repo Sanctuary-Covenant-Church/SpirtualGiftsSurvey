@@ -409,26 +409,71 @@ async function startServer() {
           })
         });
 
-        if (!resendResp.ok) {
-          const errText = await resendResp.text();
-          await logErrorToFirebase("Email Dispatch (Resend API)", new Error(`Resend HTTP ${resendResp.status}: ${errText}`), {
-            statusCode: resendResp.status,
-            recipients: allRecipients,
-            from: fromAddr
-          });
-          return res.status(500).json({
-            error: "Unable to send survey results email at this time. The issue has been logged for system administrators. Please try again later."
+        if (resendResp.ok) {
+          const resendJson = await resendResp.json().catch(() => ({}));
+          console.log(`[EMAIL RESEND API SUCCESS] Batch sent to ${allRecipients.join(", ")}`, resendJson);
+
+          return res.json({
+            success: true,
+            mode: "live_resend",
+            message: `Survey results emailed to participant (${email}) and ${adminRecipients.length} configured recipient(s).`,
+            recipients: allRecipients
           });
         }
 
-        const resendJson = await resendResp.json().catch(() => ({}));
-        console.log(`[EMAIL RESEND API SUCCESS]`, resendJson);
+        const batchErrText = await resendResp.text();
+        console.warn(`[EMAIL RESEND BATCH FAILED] Status ${resendResp.status}: ${batchErrText}. Attempting individual delivery...`);
 
-        return res.json({
-          success: true,
-          mode: "live_resend",
-          message: `Survey results emailed to participant (${email}) and ${adminRecipients.length} configured recipient(s).`,
-          recipients: allRecipients
+        // Fallback to individual address sending to maximize delivery
+        const successfulRecipients: string[] = [];
+        const failedRecipients: { email: string; error: string }[] = [];
+
+        for (const recipient of allRecipients) {
+          try {
+            const indResp = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                from: fromAddr,
+                to: [recipient],
+                subject,
+                html: htmlContent
+              })
+            });
+
+            if (indResp.ok) {
+              successfulRecipients.push(recipient);
+            } else {
+              const errBody = await indResp.text();
+              failedRecipients.push({ email: recipient, error: errBody });
+            }
+          } catch (indErr: any) {
+            failedRecipients.push({ email: recipient, error: indErr.message || String(indErr) });
+          }
+        }
+
+        if (successfulRecipients.length > 0) {
+          return res.json({
+            success: true,
+            mode: "live_resend_individual",
+            message: `Survey results emailed to ${successfulRecipients.length} of ${allRecipients.length} recipient address(es).`,
+            recipients: successfulRecipients,
+            failedRecipients
+          });
+        }
+
+        await logErrorToFirebase("Email Dispatch (Resend API)", new Error(`Resend failed for all recipients: ${batchErrText}`), {
+          statusCode: resendResp.status,
+          recipients: allRecipients,
+          from: fromAddr,
+          failedRecipients
+        });
+
+        return res.status(500).json({
+          error: `Email delivery notice: ${batchErrText.includes('testing emails') ? 'Resend free domain (onboarding@resend.dev) can only send to verified account email. Add custom domain in Resend dashboard to deliver to all addresses.' : batchErrText}`
         });
       }
 
