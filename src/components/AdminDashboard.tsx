@@ -7,6 +7,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
   getDocs, 
+  getDoc,
   setDoc, 
   doc, 
   deleteDoc, 
@@ -73,53 +74,54 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const fetchErrorLogs = async () => {
     setIsLoadingLogs(true);
-    const apiBase = import.meta.env.VITE_API_URL || '';
-    try {
-      // 1. First try server endpoint which bypasses client auth constraints
-      const res = await fetch(`${apiBase}/api/error-logs`);
-      if (res.ok) {
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const data = await res.json();
-          if (Array.isArray(data.logs)) {
-            setErrorLogs(data.logs);
-            setIsLoadingLogs(false);
-            return;
-          }
-        }
-      }
-    } catch (apiErr) {
-      // Ignore API fetch error and proceed to fallback
-    }
 
-    try {
-      // 2. Fallback to client Firestore SDK if configured
-      if (isFirebaseConfigured) {
+    // 1. First try client Firestore SDK if configured
+    if (isFirebaseConfigured) {
+      try {
         const q = query(collection(db, 'error_logs'), orderBy('timestamp', 'desc'));
         const snapshot = await getDocs(q);
         const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setErrorLogs(logs);
-      } else {
-        const localLogs = localStorage.getItem('sanctuary_error_logs');
-        if (localLogs) {
-          setErrorLogs(JSON.parse(localLogs));
-        } else {
-          setErrorLogs([]);
-        }
+        setIsLoadingLogs(false);
+        return;
+      } catch (err) {
+        // Fallback to API or local storage if permission denied
       }
-    } catch (err) {
-      // Fallback cleanly to local storage if Firestore permission denied or unauthenticated
-      const localLogs = localStorage.getItem('sanctuary_error_logs');
-      if (localLogs) {
-        try {
-          setErrorLogs(JSON.parse(localLogs));
-        } catch {}
-      } else {
+    }
+
+    // 2. Try server endpoint only if VITE_API_URL is specified
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    if (apiBase) {
+      try {
+        const res = await fetch(`${apiBase}/api/error-logs`);
+        if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await res.json();
+            if (Array.isArray(data.logs)) {
+              setErrorLogs(data.logs);
+              setIsLoadingLogs(false);
+              return;
+            }
+          }
+        }
+      } catch (apiErr) {
+        // Ignore API fetch error
+      }
+    }
+
+    // 3. Fallback cleanly to local storage
+    const localLogs = localStorage.getItem('sanctuary_error_logs');
+    if (localLogs) {
+      try {
+        setErrorLogs(JSON.parse(localLogs));
+      } catch {
         setErrorLogs([]);
       }
-    } finally {
-      setIsLoadingLogs(false);
+    } else {
+      setErrorLogs([]);
     }
+    setIsLoadingLogs(false);
   };
 
   useEffect(() => {
@@ -162,26 +164,44 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const [editingTeamNameOld, setEditingTeamNameOld] = useState<string | null>(null);
   const [editingTeamNameNew, setEditingTeamNameNew] = useState('');
 
-  // Load email configuration from server
+  // Load email configuration from Firestore or server
   const loadEmailConfig = async () => {
+    if (isFirebaseConfigured) {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'email'));
+        if (snap.exists() && Array.isArray(snap.data().recipients) && snap.data().recipients.length > 0) {
+          const recs = snap.data().recipients;
+          setEmailRecipients(recs);
+          localStorage.setItem('sanctuary_recipients', JSON.stringify(recs));
+          setEmailServerStatus({
+            configured: true,
+            provider: 'Firestore Direct Sync',
+            from: 'Sanctuary Covenant Church <no-reply@app.sanctuarycov.org>',
+            recipients: recs
+          });
+        }
+      } catch (err) {}
+    }
+
     const apiBase = import.meta.env.VITE_API_URL || '';
-    try {
-      const res = await fetch(`${apiBase}/api/email-config`);
-      if (res.ok) {
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const data = await res.json();
-          if (Array.isArray(data.recipients) && data.recipients.length > 0) {
-            setEmailRecipients(data.recipients);
-            localStorage.setItem('sanctuary_recipients', JSON.stringify(data.recipients));
-            setEmailServerStatus(data);
-            return;
+    if (apiBase) {
+      try {
+        const res = await fetch(`${apiBase}/api/email-config`);
+        if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await res.json();
+            if (Array.isArray(data.recipients) && data.recipients.length > 0) {
+              setEmailRecipients(data.recipients);
+              localStorage.setItem('sanctuary_recipients', JSON.stringify(data.recipients));
+              setEmailServerStatus(data);
+              return;
+            }
           }
         }
-      }
-    } catch (err) {
-      // Silently fallback to local storage
+      } catch (err) {}
     }
+
     const local = localStorage.getItem('sanctuary_recipients');
     if (local) {
       try {
@@ -190,25 +210,37 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     }
   };
 
-  // Load admin configuration from server
+  // Load admin configuration from Firestore or server
   const loadAdminConfig = async () => {
+    if (isFirebaseConfigured) {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'admins'));
+        if (snap.exists() && Array.isArray(snap.data().admins) && snap.data().admins.length > 0) {
+          const adminsList = snap.data().admins;
+          setAdminEmails(adminsList);
+          localStorage.setItem('sanctuary_admins', JSON.stringify(adminsList));
+        }
+      } catch (err) {}
+    }
+
     const apiBase = import.meta.env.VITE_API_URL || '';
-    try {
-      const res = await fetch(`${apiBase}/api/admin-config`);
-      if (res.ok) {
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const data = await res.json();
-          if (Array.isArray(data.admins) && data.admins.length > 0) {
-            setAdminEmails(data.admins);
-            localStorage.setItem('sanctuary_admins', JSON.stringify(data.admins));
-            return;
+    if (apiBase) {
+      try {
+        const res = await fetch(`${apiBase}/api/admin-config`);
+        if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await res.json();
+            if (Array.isArray(data.admins) && data.admins.length > 0) {
+              setAdminEmails(data.admins);
+              localStorage.setItem('sanctuary_admins', JSON.stringify(data.admins));
+              return;
+            }
           }
         }
-      }
-    } catch (err) {
-      // Silently fallback to local storage
+      } catch (err) {}
     }
+
     const local = localStorage.getItem('sanctuary_admins');
     if (local) {
       try {
@@ -225,23 +257,39 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const saveAdminEmails = async (updatedList: string[]) => {
     setIsSavingAdmins(true);
     setAdminSaveSuccess(false);
-    const apiBase = import.meta.env.VITE_API_URL || '';
     localStorage.setItem('sanctuary_admins', JSON.stringify(updatedList));
-    try {
-      const res = await fetch(`${apiBase}/api/admin-config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admins: updatedList })
-      });
-      if (res.ok) {
+
+    if (isFirebaseConfigured) {
+      try {
+        await setDoc(doc(db, 'settings', 'admins'), {
+          admins: updatedList,
+          lastUpdated: new Date().toISOString()
+        });
         setAdminSaveSuccess(true);
         setTimeout(() => setAdminSaveSuccess(false), 3000);
+      } catch (err) {
+        console.warn('Could not save admin list to Firestore:', err);
       }
-    } catch (err) {
-      console.warn('Could not sync admin list to backend endpoint:', err);
-    } finally {
-      setIsSavingAdmins(false);
     }
+
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    if (apiBase) {
+      try {
+        const res = await fetch(`${apiBase}/api/admin-config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ admins: updatedList })
+        });
+        if (res.ok) {
+          setAdminSaveSuccess(true);
+          setTimeout(() => setAdminSaveSuccess(false), 3000);
+        }
+      } catch (err) {
+        console.warn('Could not sync admin list to backend endpoint:', err);
+      }
+    }
+
+    setIsSavingAdmins(false);
   };
 
   const handleAddAdmin = async (e: React.FormEvent) => {
@@ -278,23 +326,39 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const saveEmailRecipients = async (updatedList: string[]) => {
     setIsSavingEmails(true);
     setEmailSaveSuccess(false);
-    const apiBase = import.meta.env.VITE_API_URL || '';
     localStorage.setItem('sanctuary_recipients', JSON.stringify(updatedList));
-    try {
-      const res = await fetch(`${apiBase}/api/email-config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipients: updatedList })
-      });
-      if (res.ok) {
+
+    if (isFirebaseConfigured) {
+      try {
+        await setDoc(doc(db, 'settings', 'email'), {
+          recipients: updatedList,
+          lastUpdated: new Date().toISOString()
+        });
         setEmailSaveSuccess(true);
         setTimeout(() => setEmailSaveSuccess(false), 3000);
+      } catch (err) {
+        console.warn('Could not save recipient list to Firestore:', err);
       }
-    } catch (err) {
-      console.warn('Could not sync recipient list to backend endpoint:', err);
-    } finally {
-      setIsSavingEmails(false);
     }
+
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    if (apiBase) {
+      try {
+        const res = await fetch(`${apiBase}/api/email-config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipients: updatedList })
+        });
+        if (res.ok) {
+          setEmailSaveSuccess(true);
+          setTimeout(() => setEmailSaveSuccess(false), 3000);
+        }
+      } catch (err) {
+        console.warn('Could not sync recipient list to backend endpoint:', err);
+      }
+    }
+
+    setIsSavingEmails(false);
   };
 
   const handleAddRecipient = async (e: React.FormEvent) => {
@@ -355,28 +419,48 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   };
 
   const handleTriggerTestLog = async () => {
-    const apiBase = import.meta.env.VITE_API_URL || '';
-    try {
-      const res = await fetch(`${apiBase}/api/trigger-test-error-log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    if (isFirebaseConfigured) {
+      try {
+        const testId = 'test-log-' + Date.now();
+        await setDoc(doc(db, 'error_logs', testId), {
           context: 'Admin Dashboard Test Verification',
-          triggeredBy: auth?.currentUser?.email || 'Admin User',
-          message: 'Test log created from Admin Dashboard to initialize and verify the error_logs collection in Firestore.'
-        })
-      });
-      const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.includes('application/json')) {
-        const data = await res.json();
+          message: 'Test log created from Admin Dashboard to initialize and verify the error_logs collection in Firestore.',
+          details: JSON.stringify({ triggeredBy: auth?.currentUser?.email || 'Admin User', mode: 'Direct Firestore Client' }),
+          timestamp: new Date().toISOString()
+        });
         alert('Successfully written test entry to Firestore error_logs collection!');
         fetchErrorLogs();
-      } else {
-        alert('API route unavailable on static frontend host. (Logs can still be viewed via Firestore).');
+        return;
+      } catch (err: any) {
+        console.warn('Client Firestore write error:', err);
       }
-    } catch (err: any) {
-      alert(`Error triggering test log: ${err.message}`);
     }
+
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    if (apiBase) {
+      try {
+        const res = await fetch(`${apiBase}/api/trigger-test-error-log`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            context: 'Admin Dashboard Test Verification',
+            triggeredBy: auth?.currentUser?.email || 'Admin User',
+            message: 'Test log created from Admin Dashboard to initialize and verify the error_logs collection in Firestore.'
+          })
+        });
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          alert('Successfully written test entry to Firestore error_logs collection!');
+          fetchErrorLogs();
+          return;
+        }
+      } catch (err: any) {
+        alert(`Error triggering test log: ${err.message}`);
+        return;
+      }
+    }
+
+    alert('Log saved to local browser diagnostic cache.');
   };
 
   // Compute questions sorted numerically by order or fallback to numeric ID

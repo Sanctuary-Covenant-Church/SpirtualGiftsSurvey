@@ -27,7 +27,7 @@ import {
   Info
 } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import Layout from './components/Layout';
 import AdminDashboard from './components/AdminDashboard';
 import Sanctuary5Hero from './components/Sanctuary5Hero';
@@ -60,8 +60,20 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [allowedAdminEmails, setAllowedAdminEmails] = useState<string[]>(DEFAULT_ADMIN_EMAILS);
 
-  // Load configured admin emails from server
+  // Load configured admin emails from Firestore or backend server
   useEffect(() => {
+    // 1. Try Firestore first if configured
+    if (isFirebaseConfigured && db) {
+      getDoc(doc(db, 'settings', 'admins'))
+        .then(snap => {
+          if (snap.exists() && Array.isArray(snap.data().admins) && snap.data().admins.length > 0) {
+            setAllowedAdminEmails(snap.data().admins);
+          }
+        })
+        .catch(() => {});
+    }
+
+    // 2. Also try API endpoint if custom backend API URL is configured
     const apiBase = import.meta.env.VITE_API_URL || '';
     if (!apiBase) return;
     fetch(`${apiBase}/api/admin-config`)
@@ -82,7 +94,7 @@ export default function App() {
         }
       })
       .catch(() => {
-        // Silently fallback to default admin emails if server endpoint is unavailable
+        // Silently fallback if server endpoint is unavailable
       });
   }, [view]);
   
