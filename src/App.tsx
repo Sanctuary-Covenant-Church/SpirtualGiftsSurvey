@@ -756,7 +756,14 @@ export default function App() {
                       href="https://sanctuarycov.org/join-a-team/" 
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={() => trackEvent('cta_click', { target: 'join_a_team' })}
+                      onClick={() => trackEvent('cta_click', { 
+                        target: 'join_a_team', 
+                        source: 'results_sidebar',
+                        primaryGiftId: result?.topGifts?.[0]?.giftId,
+                        primaryGiftName: result?.topGifts?.[0]?.name,
+                        secondaryGiftId: result?.topGifts?.[1]?.giftId,
+                        secondaryGiftName: result?.topGifts?.[1]?.name
+                      })}
                       className="block w-full py-5 bg-brand-red text-white text-center text-[10px] uppercase tracking-[0.25em] font-bold rounded-full hover:bg-brand-red-hover transition-all shadow-md shadow-brand-red/20"
                     >
                       Join a Team (sanctuarycov.org)

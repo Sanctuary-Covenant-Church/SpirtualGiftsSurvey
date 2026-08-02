@@ -15,6 +15,8 @@ import {
   Sparkles
 } from 'lucide-react';
 
+import { trackEvent } from '../utils/analytics';
+
 interface Sanctuary5HeroProps {
   onStartSurvey: () => void;
 }
@@ -101,6 +103,7 @@ export default function Sanctuary5Hero({ onStartSurvey }: Sanctuary5HeroProps) {
           href="https://sanctuarycov.org/join-a-team/"
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => trackEvent('cta_click', { target: 'join_a_team', source: 'hero' })}
           className="w-full sm:w-auto px-8 py-4.5 bg-white border border-brand-border text-brand-text rounded-full text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-surface transition-all flex items-center justify-center gap-2"
         >
           <span>Join a Team (sanctuarycov.org)</span>

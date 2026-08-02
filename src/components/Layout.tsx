@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Menu, X, ExternalLink, ShieldAlert, Heart, Compass, Users } from 'lucide-react';
 import SanctuaryOfficialLogo from './SanctuaryOfficialLogo';
+import { trackEvent } from '../utils/analytics';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -53,6 +54,7 @@ export default function Layout({
             href="https://sanctuarycov.org/join-a-team/" 
             target="_blank" 
             rel="noopener noreferrer" 
+            onClick={() => trackEvent('cta_click', { target: 'join_a_team', source: 'top_bar' })}
             className="text-brand-red font-bold hover:underline transition-colors"
           >
             Join a Team
@@ -98,6 +100,7 @@ export default function Layout({
             href="https://sanctuarycov.org/join-a-team/"
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => trackEvent('cta_click', { target: 'join_a_team', source: 'header' })}
             className="text-brand-muted hover:text-brand-text border-b-2 border-transparent pb-1 flex items-center gap-1 transition-colors"
           >
             <span>Join a Team</span>

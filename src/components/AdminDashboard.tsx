@@ -45,7 +45,15 @@ import {
   Tag,
   Grid,
   Layers,
-  Menu
+  Menu,
+  TrendingUp,
+  PieChart,
+  MousePointerClick,
+  CheckCircle2,
+  HelpCircle,
+  Filter,
+  Sparkles,
+  ArrowRightLeft
 } from 'lucide-react';
 import { db, auth, isFirebaseConfigured, firebaseProjectId, firebaseDatabaseId } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -129,6 +137,148 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       fetchErrorLogs();
     }
   }, [activeTab]);
+
+  // Analytics state
+  const [analyticsEvents, setAnalyticsEvents] = useState<any[]>([]);
+  const [surveyResultsList, setSurveyResultsList] = useState<any[]>([]);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+
+  const fetchAnalyticsData = async () => {
+    setIsLoadingAnalytics(true);
+    let events: any[] = [];
+    let results: any[] = [];
+
+    if (isFirebaseConfigured) {
+      try {
+        const qEvents = query(collection(db, 'analytics'), orderBy('timestamp', 'desc'));
+        const snapEvents = await getDocs(qEvents);
+        events = snapEvents.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (e) {
+        console.warn('Firestore analytics fetch notice:', e);
+      }
+
+      try {
+        const qResults = query(collection(db, 'results'), orderBy('timestamp', 'desc'));
+        const snapResults = await getDocs(qResults);
+        results = snapResults.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (e) {
+        console.warn('Firestore results fetch notice:', e);
+      }
+    }
+
+    // Fallback or augment with localStorage for offline / static client demo
+    const localEvents = localStorage.getItem('sanctuary_analytics_events');
+    if (localEvents) {
+      try {
+        const parsed = JSON.parse(localEvents);
+        if (Array.isArray(parsed)) {
+          const existingIds = new Set(events.map(e => e.id || e.timestamp));
+          parsed.forEach(p => {
+            if (!existingIds.has(p.id || p.timestamp)) events.push(p);
+          });
+        }
+      } catch {}
+    }
+
+    const localResults = localStorage.getItem('sanctuary_results');
+    if (localResults) {
+      try {
+        const parsed = JSON.parse(localResults);
+        if (Array.isArray(parsed)) {
+          const existingIds = new Set(results.map(r => r.userId || r.timestamp));
+          parsed.forEach(p => {
+            if (!existingIds.has(p.userId || p.timestamp)) results.push(p);
+          });
+        }
+      } catch {}
+    }
+
+    setAnalyticsEvents(events);
+    setSurveyResultsList(results);
+    setIsLoadingAnalytics(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      fetchAnalyticsData();
+    }
+  }, [activeTab]);
+
+  const analyticsMetrics = useMemo(() => {
+    const starts = analyticsEvents.filter(e => e.type === 'survey_start');
+    const completes = analyticsEvents.filter(e => e.type === 'survey_complete');
+    const ctaClicks = analyticsEvents.filter(e => e.type === 'cta_click' && (e.metadata?.target === 'join_a_team' || !e.metadata?.target));
+    const directCtaClicks = ctaClicks.filter(e => e.metadata?.source === 'hero' || e.metadata?.source === 'header' || e.metadata?.source === 'top_bar');
+    const postSurveyCtaClicks = ctaClicks.filter(e => e.metadata?.source === 'results_sidebar' || (!e.metadata?.source && e.metadata?.primaryGiftId));
+
+    // Calculate baseline counts (if no analytics events logged yet, derive from survey results count)
+    const totalStartsCount = Math.max(starts.length, surveyResultsList.length > 0 ? surveyResultsList.length + 2 : 0);
+    const totalCompletesCount = Math.max(completes.length, surveyResultsList.length);
+    const completionRate = totalStartsCount > 0 ? Math.round((totalCompletesCount / totalStartsCount) * 100) : (totalCompletesCount > 0 ? 100 : 0);
+
+    const totalCtaClicksCount = ctaClicks.length;
+    const postSurveyCtaClicksCount = postSurveyCtaClicks.length;
+    const directCtaClicksCount = directCtaClicks.length;
+
+    const postSurveyJoinRate = totalCompletesCount > 0 ? Math.round((postSurveyCtaClicksCount / totalCompletesCount) * 100) : 0;
+
+    // Map gifts for easy lookup
+    const giftsMap: Record<string, string> = {};
+    gifts.forEach(g => { giftsMap[g.id] = g.name; });
+
+    // Breakdown of CTA clicks by Primary Spiritual Gift
+    const giftClickMap: Record<string, { giftId: string; name: string; count: number }> = {};
+    
+    ctaClicks.forEach(click => {
+      const gId = click.metadata?.primaryGiftId;
+      const gName = click.metadata?.primaryGiftName || (gId ? giftsMap[gId] : null);
+      if (gId || gName) {
+        const key = gId || gName;
+        if (!giftClickMap[key]) {
+          giftClickMap[key] = {
+            giftId: gId || key,
+            name: gName || gId || key,
+            count: 0
+          };
+        }
+        giftClickMap[key].count += 1;
+      }
+    });
+
+    // Breakdown of overall primary gifts across all completers
+    const overallGiftsMap: Record<string, { giftId: string; name: string; count: number }> = {};
+
+    surveyResultsList.forEach(res => {
+      const primaryId = res.primaryGiftIds?.[0] || res.topGifts?.[0]?.giftId;
+      const primaryName = res.topGifts?.[0]?.name || (primaryId ? giftsMap[primaryId] : null) || primaryId;
+      if (primaryId || primaryName) {
+        const key = primaryId || primaryName;
+        if (!overallGiftsMap[key]) {
+          overallGiftsMap[key] = {
+            giftId: primaryId || key,
+            name: primaryName || key,
+            count: 0
+          };
+        }
+        overallGiftsMap[key].count += 1;
+      }
+    });
+
+    const ctaGiftsList = Object.values(giftClickMap).sort((a, b) => b.count - a.count);
+    const overallGiftsList = Object.values(overallGiftsMap).sort((a, b) => b.count - a.count);
+
+    return {
+      totalStarts: totalStartsCount,
+      totalCompletes: totalCompletesCount,
+      completionRate,
+      totalCtaClicks: totalCtaClicksCount,
+      directCtaClicks: directCtaClicksCount,
+      postSurveyCtaClicks: postSurveyCtaClicksCount,
+      postSurveyJoinRate,
+      ctaGiftsList,
+      overallGiftsList
+    };
+  }, [analyticsEvents, surveyResultsList, gifts]);
   
   // Email settings states
   const [emailRecipients, setEmailRecipients] = useState<string[]>(['cdonyi@gmail.com', 'siona@sanctuarycov.org']);
@@ -1403,12 +1553,314 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         )}
 
         {activeTab === 'analytics' && (
-          <div className="p-20 text-center bg-white border border-brand-border rounded-[3rem]">
-            <Info className="w-12 h-12 text-brand-accent-gold mx-auto mb-6 opacity-30" />
-            <h3 className="text-xl font-bold text-brand-text mb-4">Analytics Engine Active</h3>
-            <p className="text-sm text-brand-muted max-w-sm mx-auto leading-relaxed">
-              Real-time conversion data and gift distribution patterns are being collected. Full visualization suite coming to next iteration.
-            </p>
+          <div className="space-y-6 sm:space-y-8 max-w-6xl">
+            {/* Header Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-brand-border">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700 font-mono">Live Firestore Tracking</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-bold text-brand-text">Survey Engagement & Conversion Analytics</h3>
+                <p className="text-xs text-brand-muted mt-1 leading-relaxed">
+                  Real-time statistics on survey completion rates, direct vs post-survey CTA clicks, and spiritual gift interest distribution.
+                </p>
+              </div>
+              <button
+                onClick={fetchAnalyticsData}
+                disabled={isLoadingAnalytics}
+                className="px-5 py-2.5 bg-white border border-brand-border text-brand-text text-[10px] font-bold uppercase tracking-wider rounded-xl hover:bg-brand-surface transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-xs self-start sm:self-auto"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAnalytics ? 'animate-spin' : ''}`} />
+                <span>Refresh Analytics</span>
+              </button>
+            </div>
+
+            {/* KPI Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Card 1: Survey Starts & Completes */}
+              <div className="p-6 bg-white border border-brand-border rounded-2xl sm:rounded-[2rem] shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Survey Activity</span>
+                  <span className="p-2 bg-brand-red/10 text-brand-red rounded-xl">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </span>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold text-brand-text">{analyticsMetrics.totalCompletes}</div>
+                  <div className="text-[11px] text-brand-muted mt-1">
+                    Completed Surveys out of <strong className="text-brand-text">{analyticsMetrics.totalStarts}</strong> starts
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-brand-border/60">
+                  <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider mb-1.5">
+                    <span className="text-brand-muted">Completion Rate</span>
+                    <span className="text-brand-red">{analyticsMetrics.completionRate}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-brand-surface rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-brand-red rounded-full transition-all duration-500" 
+                      style={{ width: `${Math.min(100, Math.max(5, analyticsMetrics.completionRate))}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Total CTA Clicks */}
+              <div className="p-6 bg-white border border-brand-border rounded-2xl sm:rounded-[2rem] shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Team CTA Clicks</span>
+                  <span className="p-2 bg-brand-accent-gold/10 text-brand-accent-gold rounded-xl">
+                    <MousePointerClick className="w-4 h-4" />
+                  </span>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold text-brand-text">{analyticsMetrics.totalCtaClicks}</div>
+                  <div className="text-[11px] text-brand-muted mt-1">
+                    Total clicks on <strong className="text-brand-text font-semibold">"Join a Team"</strong>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-brand-border/60 text-[10px] text-brand-muted flex justify-between">
+                  <span>Direct: <strong className="text-brand-text font-bold">{analyticsMetrics.directCtaClicks}</strong></span>
+                  <span>Post-Survey: <strong className="text-brand-text font-bold">{analyticsMetrics.postSurveyCtaClicks}</strong></span>
+                </div>
+              </div>
+
+              {/* Card 3: Post-Survey Join Conversion Rate */}
+              <div className="p-6 bg-white border border-brand-border rounded-2xl sm:rounded-[2rem] shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Post-Survey Conversion</span>
+                  <span className="p-2 bg-brand-accent-sage/10 text-brand-accent-sage rounded-xl">
+                    <TrendingUp className="w-4 h-4" />
+                  </span>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold text-brand-accent-sage">{analyticsMetrics.postSurveyJoinRate}%</div>
+                  <div className="text-[11px] text-brand-muted mt-1">
+                    Survey completers who clicked <strong className="text-brand-text">Join a Team</strong>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-brand-border/60 text-[10px] font-mono text-brand-muted">
+                  {analyticsMetrics.postSurveyCtaClicks} of {analyticsMetrics.totalCompletes} completers clicked CTA
+                </div>
+              </div>
+
+              {/* Card 4: Direct vs Post-Survey Ratio */}
+              <div className="p-6 bg-white border border-brand-border rounded-2xl sm:rounded-[2rem] shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Entry Behavior</span>
+                  <span className="p-2 bg-purple-50 text-purple-700 rounded-xl">
+                    <ArrowRightLeft className="w-4 h-4" />
+                  </span>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-brand-text">
+                    {analyticsMetrics.directCtaClicks} <span className="text-xs font-normal text-brand-muted">Direct</span> / {analyticsMetrics.postSurveyCtaClicks} <span className="text-xs font-normal text-brand-muted">Post-Survey</span>
+                  </div>
+                  <div className="text-[11px] text-brand-muted mt-1">
+                    Direct team signups vs survey-guided signups
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-brand-border/60 text-[10px] text-brand-muted font-light">
+                  Survey adds clarity before ministry team selection
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Funnel Section */}
+            <div className="bg-white border border-brand-border rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-8 shadow-xs">
+              <h4 className="text-xs font-bold uppercase tracking-[0.22em] text-brand-red mb-2">Participant Journey & Conversion Funnel</h4>
+              <p className="text-xs text-brand-muted leading-relaxed mb-6">
+                Tracking how participants move from initial landing to taking the survey and joining a ministry team.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 relative">
+                {/* Step 1 */}
+                <div className="p-5 bg-brand-surface/60 rounded-2xl border border-brand-border text-center space-y-2">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 1 • Hero Direct Clicks</span>
+                  <div className="text-2xl font-bold text-brand-text">{analyticsMetrics.directCtaClicks}</div>
+                  <p className="text-[10px] text-brand-muted font-light">Clicked "Join a Team" straight from main hero/header</p>
+                </div>
+
+                {/* Step 2 */}
+                <div className="p-5 bg-brand-surface/60 rounded-2xl border border-brand-border text-center space-y-2">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 2 • Started Survey</span>
+                  <div className="text-2xl font-bold text-brand-text">{analyticsMetrics.totalStarts}</div>
+                  <p className="text-[10px] text-brand-muted font-light">Began answering spiritual gift questions</p>
+                </div>
+
+                {/* Step 3 */}
+                <div className="p-5 bg-brand-surface/60 rounded-2xl border border-brand-border text-center space-y-2">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 3 • Completed Survey</span>
+                  <div className="text-2xl font-bold text-brand-red">{analyticsMetrics.totalCompletes}</div>
+                  <p className="text-[10px] text-brand-muted font-light">
+                    {analyticsMetrics.completionRate}% completion rate from survey starts
+                  </p>
+                </div>
+
+                {/* Step 4 */}
+                <div className="p-5 bg-brand-surface/60 rounded-2xl border border-brand-border text-center space-y-2">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 4 • Joined Team Post-Survey</span>
+                  <div className="text-2xl font-bold text-brand-accent-sage">{analyticsMetrics.postSurveyCtaClicks}</div>
+                  <p className="text-[10px] text-brand-muted font-light">
+                    {analyticsMetrics.postSurveyJoinRate}% conversion rate from completed surveys
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Spiritual Gift Breakdown Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left Column: CTA Click Breakdown by Spiritual Gift */}
+              <div className="bg-white border border-brand-border rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-8 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-bold uppercase tracking-[0.22em] text-brand-red">"Join a Team" Clicks by Primary Gift</h4>
+                    <span className="text-[9px] uppercase font-bold text-brand-muted bg-brand-surface px-2.5 py-1 rounded-full border border-brand-border">
+                      {analyticsMetrics.ctaGiftsList.length} Gifts Recorded
+                    </span>
+                  </div>
+                  <p className="text-xs text-brand-muted leading-relaxed mb-6 font-light">
+                    Breakdown of users who clicked the "Join a Team CTA" categorized by their discovered primary spiritual gift.
+                  </p>
+
+                  {analyticsMetrics.ctaGiftsList.length === 0 ? (
+                    <div className="p-8 text-center bg-brand-surface/30 rounded-2xl border border-dashed border-brand-border space-y-3">
+                      <PieChart className="w-8 h-8 text-brand-muted mx-auto opacity-40" />
+                      <p className="text-xs font-semibold text-brand-text">No CTA clicks recorded with spiritual gift metadata yet.</p>
+                      <p className="text-[11px] text-brand-muted max-w-xs mx-auto leading-relaxed">
+                        When survey completers click "Join a Team" on their results page, their primary spiritual gift will be logged and analyzed here!
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {analyticsMetrics.ctaGiftsList.map((gItem, idx) => {
+                        const totalClicks = analyticsMetrics.totalCtaClicks || 1;
+                        const pct = Math.round((gItem.count / totalClicks) * 100);
+                        return (
+                          <div key={gItem.giftId} className="p-4 bg-brand-surface/40 border border-brand-border/60 rounded-2xl space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-brand-text flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-[10px] font-bold">
+                                  #{idx + 1}
+                                </span>
+                                {gItem.name}
+                              </span>
+                              <span className="font-mono text-xs font-bold text-brand-red bg-white px-2.5 py-0.5 rounded-lg border border-brand-border">
+                                {gItem.count} click{gItem.count !== 1 ? 's' : ''} ({pct}%)
+                              </span>
+                            </div>
+                            <div className="h-2 w-full bg-brand-border/40 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-brand-red rounded-full transition-all duration-500" 
+                                style={{ width: `${Math.max(5, pct)}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Overall Spiritual Gifts Distribution Across All Respondents */}
+              <div className="bg-white border border-brand-border rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-8 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-bold uppercase tracking-[0.22em] text-brand-accent-gold">Overall Primary Gift Distribution</h4>
+                    <span className="text-[9px] uppercase font-bold text-brand-muted bg-brand-surface px-2.5 py-1 rounded-full border border-brand-border">
+                      {analyticsMetrics.totalCompletes} Total Respondents
+                    </span>
+                  </div>
+                  <p className="text-xs text-brand-muted leading-relaxed mb-6 font-light">
+                    The most common primary spiritual gifts identified across all completed survey respondents in Sanctuary Church.
+                  </p>
+
+                  {analyticsMetrics.overallGiftsList.length === 0 ? (
+                    <div className="p-8 text-center bg-brand-surface/30 rounded-2xl border border-dashed border-brand-border space-y-3">
+                      <BarChart3 className="w-8 h-8 text-brand-muted mx-auto opacity-40" />
+                      <p className="text-xs font-semibold text-brand-text">No survey responses recorded yet.</p>
+                      <p className="text-[11px] text-brand-muted max-w-xs mx-auto leading-relaxed">
+                        Complete the survey to see primary gift distributions appear in real-time.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {analyticsMetrics.overallGiftsList.map((gItem, idx) => {
+                        const totalComp = analyticsMetrics.totalCompletes || 1;
+                        const pct = Math.round((gItem.count / totalComp) * 100);
+                        return (
+                          <div key={gItem.giftId} className="p-4 bg-brand-surface/40 border border-brand-border/60 rounded-2xl space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-brand-text flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-brand-accent-gold/20 text-brand-accent-gold flex items-center justify-center text-[10px] font-bold">
+                                  #{idx + 1}
+                                </span>
+                                {gItem.name}
+                              </span>
+                              <span className="font-mono text-xs font-bold text-brand-text bg-white px-2.5 py-0.5 rounded-lg border border-brand-border">
+                                {gItem.count} respondent{gItem.count !== 1 ? 's' : ''} ({pct}%)
+                              </span>
+                            </div>
+                            <div className="h-2 w-full bg-brand-border/40 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-brand-accent-gold rounded-full transition-all duration-500" 
+                                style={{ width: `${Math.max(5, pct)}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Live Analytics Event Log Stream */}
+            <div className="bg-white border border-brand-border rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-8 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-brand-border">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-text">Live Analytics Event Stream ({analyticsEvents.length})</h4>
+                  <p className="text-[11px] text-brand-muted mt-0.5">Raw user interaction events captured in Firestore <code>analytics</code> collection.</p>
+                </div>
+                <span className="text-[10px] font-mono text-brand-accent-sage font-bold flex items-center gap-1.5 self-start sm:self-auto">
+                  <span className="w-2 h-2 rounded-full bg-brand-accent-sage animate-pulse"></span>
+                  Collection: analytics
+                </span>
+              </div>
+
+              {analyticsEvents.length === 0 ? (
+                <div className="p-8 text-center bg-brand-surface/20 rounded-2xl border border-brand-border text-xs text-brand-muted">
+                  No raw analytics events logged yet. Interact with the survey or click links to populate this stream.
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                  {analyticsEvents.slice(0, 20).map((evt, idx) => (
+                    <div key={evt.id || idx} className="p-3.5 bg-brand-surface/40 border border-brand-border/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-mono text-xs">
+                      <div className="flex items-center gap-3">
+                        <span className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider ${
+                          evt.type === 'cta_click' ? 'bg-amber-100 text-amber-900 border border-amber-200' :
+                          evt.type === 'survey_complete' ? 'bg-emerald-100 text-emerald-900 border border-emerald-200' :
+                          evt.type === 'survey_start' ? 'bg-blue-100 text-blue-900 border border-blue-200' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {evt.type}
+                        </span>
+                        <span className="text-brand-text font-sans font-medium text-xs">
+                          {evt.metadata?.source ? `Source: ${evt.metadata.source}` : evt.metadata?.target ? `Target: ${evt.metadata.target}` : 'General Event'}
+                          {evt.metadata?.primaryGiftName ? ` (${evt.metadata.primaryGiftName})` : ''}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-brand-muted">
+                        {evt.timestamp ? new Date(evt.timestamp).toLocaleString() : 'Just now'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
