@@ -60,6 +60,16 @@
         "email": { "type": "string" }
       }
     },
+    "Settings": {
+      "title": "System Settings",
+      "description": "Configuration documents for recipients and admin lists.",
+      "type": "object",
+      "properties": {
+        "recipients": { "type": "array" },
+        "admins": { "type": "array" },
+        "lastUpdated": { "type": "string" }
+      }
+    },
     "ErrorLog": {
       "title": "Error Log",
       "description": "Log of server and API errors for administrative debugging without leaking details to end users.",
@@ -92,6 +102,10 @@
     "admins/{userId}": {
       "schema": "Admin",
       "description": "Authorized administrators."
+    },
+    "settings/{settingId}": {
+      "schema": "Settings",
+      "description": "Configurable system settings like email recipients and admins list."
     },
     "error_logs/{logId}": {
       "schema": "ErrorLog",
