@@ -173,14 +173,16 @@ export default function App() {
     };
   }, []);
 
-  // Track page view
+  // Track page view and survey start
   useEffect(() => {
     trackEvent('page_view', { view });
+    if (view === 'survey') {
+      trackEvent('survey_start');
+    }
   }, [view]);
 
   const startSurvey = () => {
     setView('survey');
-    trackEvent('survey_start');
   };
 
   const handleAdminLogin = async () => {
