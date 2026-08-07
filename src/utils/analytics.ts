@@ -8,11 +8,14 @@ import { db } from '../lib/firebase';
 import { AnalyticsEvent } from "../types";
 
 export const trackEvent = async (type: AnalyticsEvent['type'], metadata?: Record<string, any>) => {
-  const event: AnalyticsEvent = {
+  const event: Record<string, any> = {
     type,
     timestamp: new Date().toISOString(),
-    metadata
   };
+
+  if (metadata && Object.keys(metadata).length > 0) {
+    event.metadata = metadata;
+  }
 
   console.log(`[Track] ${type}`, metadata);
 
