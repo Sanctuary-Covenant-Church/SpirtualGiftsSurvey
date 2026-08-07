@@ -142,6 +142,43 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const [analyticsEvents, setAnalyticsEvents] = useState<any[]>([]);
   const [surveyResultsList, setSurveyResultsList] = useState<any[]>([]);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+  const [showResetAnalyticsModal, setShowResetAnalyticsModal] = useState(false);
+  const [isResettingAnalytics, setIsResettingAnalytics] = useState(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
+
+  const handleResetAnalytics = async () => {
+    setIsResettingAnalytics(true);
+    try {
+      if (isFirebaseConfigured) {
+        // Delete all documents in 'analytics' collection
+        const snapEvents = await getDocs(collection(db, 'analytics'));
+        const deleteEventPromises = snapEvents.docs.map(docSnap => deleteDoc(doc(db, 'analytics', docSnap.id)));
+        
+        // Delete all documents in 'results' collection
+        const snapResults = await getDocs(collection(db, 'results'));
+        const deleteResultPromises = snapResults.docs.map(docSnap => deleteDoc(doc(db, 'results', docSnap.id)));
+
+        await Promise.all([...deleteEventPromises, ...deleteResultPromises]);
+      }
+
+      // Clear local storage
+      localStorage.removeItem('sanctuary_analytics_events');
+      localStorage.removeItem('sanctuary_results');
+
+      // Clear state
+      setAnalyticsEvents([]);
+      setSurveyResultsList([]);
+
+      setShowResetAnalyticsModal(false);
+      setResetSuccessMessage('Analytics and survey tracking history have been successfully reset.');
+      setTimeout(() => setResetSuccessMessage(null), 5000);
+    } catch (err: any) {
+      console.error('Error resetting analytics:', err);
+      alert('Failed to reset analytics: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsResettingAnalytics(false);
+    }
+  };
 
   const fetchAnalyticsData = async () => {
     setIsLoadingAnalytics(true);
@@ -1566,15 +1603,37 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                   Real-time statistics on survey completion rates, direct vs post-survey CTA clicks, and spiritual gift interest distribution.
                 </p>
               </div>
-              <button
-                onClick={fetchAnalyticsData}
-                disabled={isLoadingAnalytics}
-                className="px-5 py-2.5 bg-white border border-brand-border text-brand-text text-[10px] font-bold uppercase tracking-wider rounded-xl hover:bg-brand-surface transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-xs self-start sm:self-auto"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAnalytics ? 'animate-spin' : ''}`} />
-                <span>Refresh Analytics</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+                <button
+                  onClick={fetchAnalyticsData}
+                  disabled={isLoadingAnalytics || isResettingAnalytics}
+                  className="px-4 py-2.5 bg-white border border-brand-border text-brand-text text-[10px] font-bold uppercase tracking-wider rounded-xl hover:bg-brand-surface transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAnalytics ? 'animate-spin' : ''}`} />
+                  <span>Refresh Analytics</span>
+                </button>
+                <button
+                  onClick={() => setShowResetAnalyticsModal(true)}
+                  disabled={isLoadingAnalytics || isResettingAnalytics}
+                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Reset Analytics</span>
+                </button>
+              </div>
             </div>
+
+            {resetSuccessMessage && (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs rounded-xl flex items-center justify-between font-medium shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{resetSuccessMessage}</span>
+                </div>
+                <button onClick={() => setResetSuccessMessage(null)} className="text-emerald-700 hover:text-emerald-950 p-1">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {/* KPI Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2478,6 +2537,62 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
                 className="flex-1 py-3.5 border border-brand-border text-brand-muted rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-surface"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Analytics Modal */}
+      {showResetAnalyticsModal && (
+        <div className="fixed inset-0 z-[200] bg-brand-text/40 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+          <div className="bg-brand-bg rounded-2xl sm:rounded-[2rem] p-6 sm:p-8 max-w-md w-full border border-brand-border shadow-2xl space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-red-100 text-red-700 rounded-2xl shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-brand-text">Reset Analytics Data?</h3>
+                <p className="text-xs text-brand-muted mt-1 leading-relaxed">
+                  This will permanently clear all recorded analytics events and survey completion entries.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-amber-50 border border-amber-200/80 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Warning: Irreversible Action</span>
+              </div>
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                All page view logs, survey start/completion tracking, conversion funnel metrics, and spiritual gift interest statistics in Firestore and local storage will be cleared immediately.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowResetAnalyticsModal(false)}
+                disabled={isResettingAnalytics}
+                className="px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-brand-muted hover:text-brand-text transition-colors rounded-xl border border-transparent hover:border-brand-border"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetAnalytics}
+                disabled={isResettingAnalytics}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+              >
+                {isResettingAnalytics ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Resetting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Confirm Reset</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
