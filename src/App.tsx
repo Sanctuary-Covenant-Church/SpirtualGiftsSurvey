@@ -321,7 +321,7 @@ export default function App() {
       };
 
       // Send to backend route /api/send-results (handled by Netlify Function or Express server)
-      const apiBase = import.meta.env.VITE_API_URL || '';
+      const apiBase = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
       const res = await fetch(`${apiBase}/api/send-results`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -388,7 +388,7 @@ export default function App() {
         timestamp: result.timestamp
       };
 
-      const apiBase = import.meta.env.VITE_API_URL || '';
+      const apiBase = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
       const res = await fetch(`${apiBase}/api/send-results`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -888,26 +888,10 @@ VITE_FIREBASE_DATABASE_ID=""`}
 
             <div className="space-y-3">
               <button
-                onClick={() => {
-                  // Bypass live Google sign in and switch to demo admin mode
-                  setUser({
-                    uid: 'demo-curator-id',
-                    email: 'cdonyi@gmail.com',
-                    displayName: 'Demo Curator',
-                  } as any);
-                  setView('admin');
-                  setLoginError(null);
-                }}
-                className="w-full py-4 bg-brand-accent-sage text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-opacity-95 transition-all text-center block"
-              >
-                Proceed anyway using local Demo Mode
-              </button>
-              
-              <button
                 onClick={() => setLoginError(null)}
-                className="w-full py-4 bg-transparent border border-brand-border text-brand-text rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-surface transition-all text-center block"
+                className="w-full py-4 bg-brand-text text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-black transition-all text-center block"
               >
-                Cancel & Close
+                Close & Retry
               </button>
             </div>
           </div>

@@ -58,10 +58,9 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Results (Users can write, admins can read)
+    // Results (Users can write, admins can read and delete)
     match /results/{resultId} {
-      allow create: if true; // Allow anonymous completions momentarily, or refine with auth
-      allow read: if isAdmin();
+      allow read, delete: if isAdmin();
       
       function isValidResult(data) {
         return data.userId is string &&
@@ -72,15 +71,20 @@ service cloud.firestore {
       allow create: if isValidResult(incoming()) && isValidId(resultId);
     }
 
-    // Analytics (Append only)
+    // Analytics (Append only for valid events, delete allowed for admins)
     match /analytics/{eventId} {
-      allow create: if true;
-      allow read: if isAdmin();
+      function isValidAnalyticsEvent(data) {
+        return data.type is string && data.type.size() <= 64 &&
+               data.timestamp is string;
+      }
+      allow create: if isValidAnalyticsEvent(incoming());
+      allow read, delete: if isAdmin();
     }
 
-    // Settings (Configurable system settings like email recipients and admins)
+    // Settings (Configurable system settings like email recipients and admins - only admins can write, read allowed for app settings)
     match /settings/{settingId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Admins (Only admins can manage admins)
@@ -89,9 +93,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Error Logs (App can create error logs; only admins can read, list, and delete logs)
+    // Error Logs (App can create error logs with schema check; only admins can read, list, and delete logs)
     match /error_logs/{logId} {
-      allow create: if true;
+      function isValidErrorLog(data) {
+        return data.message is string && data.message.size() <= 2000 &&
+               data.timestamp is string;
+      }
+      allow create: if isValidErrorLog(incoming());
       allow read, delete: if isAdmin();
       allow update: if false;
     }

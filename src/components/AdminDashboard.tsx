@@ -482,8 +482,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = newAdminInput.trim().toLowerCase();
-    if (!clean || !clean.includes('@')) {
-      alert('Please enter a valid email address.');
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!clean || !emailRegex.test(clean)) {
+      alert('Please enter a valid email address format (e.g. name@domain.com).');
       return;
     }
     if (adminEmails.map(a => a.toLowerCase()).includes(clean)) {
