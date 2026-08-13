@@ -276,11 +276,11 @@ export default function App() {
       };
     });
 
-    // Top 5 Ministry Matches derived from top gifts
+    // Top Ministry Matches derived from top gifts
     const ministryMatches: MinistryMatch[] = [];
     const seenTeams = new Set<string>();
 
-    for (const gMatch of topGiftsList) {
+    for (const gMatch of topGiftsList.slice(0, 5)) {
       if (gMatch.serviceTeams) {
         for (const team of gMatch.serviceTeams) {
           if (!seenTeams.has(team)) {
@@ -290,11 +290,9 @@ export default function App() {
               giftId: gMatch.giftId,
               giftName: gMatch.name
             });
-            if (ministryMatches.length >= 5) break;
           }
         }
       }
-      if (ministryMatches.length >= 5) break;
     }
 
     return {
@@ -319,6 +317,7 @@ export default function App() {
       const computedResult = result || calculateResult(responses);
       const finalResult = { ...computedResult, ...userInfo };
       setResult(finalResult);
+      setView('results');
 
       const emailPayload = {
         name: userInfo.name,
@@ -719,7 +718,29 @@ export default function App() {
                           <p className="text-xs text-brand-muted leading-relaxed mb-3 font-light">
                             {gMatch.description}
                           </p>
-                          <div className="h-[3px] w-full bg-brand-surface overflow-hidden rounded-full">
+
+                          {/* Recommended Ministry Options for this Gift */}
+                          {gMatch.serviceTeams && gMatch.serviceTeams.length > 0 && (
+                            <div className="mt-4 pt-3 border-t border-brand-border/60">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-brand-accent-gold mb-2 flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-brand-accent-gold inline-block"></span>
+                                <span>Recommended Ministry Options:</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {gMatch.serviceTeams.map(team => (
+                                  <span 
+                                    key={team} 
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-surface text-brand-text text-xs font-semibold rounded-full border border-brand-border hover:border-brand-accent-gold/50 transition-colors"
+                                  >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-brand-red"></span>
+                                    {team}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="h-[3px] w-full bg-brand-surface overflow-hidden rounded-full mt-4">
                             <motion.div 
                               className={`h-full ${idx === 0 ? 'bg-brand-red' : 'bg-brand-accent-gold'}`} 
                               initial={{ width: 0 }}
@@ -731,35 +752,6 @@ export default function App() {
                       )) : null}
                     </div>
                   </div>
-
-                  {/* Top 5 Ministry Matches Section */}
-                  {result.topMinistryMatches && result.topMinistryMatches.length > 0 && (
-                    <div className="pt-4 border-t border-brand-border">
-                      <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-brand-accent-gold mb-4">
-                        Top 5 Recommended Ministry Teams
-                      </h3>
-                      <p className="text-xs text-brand-muted mb-6 font-light">
-                        Based on your top spiritual gifts, here are 5 ministry areas at Sanctuary Covenant Church where you can flourish:
-                      </p>
-                      <div className="grid gap-3">
-                        {result.topMinistryMatches.slice(0, 5).map((mMatch, idx) => (
-                          <div key={mMatch.teamName} className="p-4 bg-brand-surface/60 border border-brand-border rounded-2xl flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className="w-6 h-6 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-[10px] font-bold">
-                                {idx + 1}
-                              </span>
-                              <span className="text-sm font-semibold text-brand-text">
-                                {mMatch.teamName}
-                              </span>
-                            </div>
-                            <span className="text-[10px] font-medium text-brand-muted bg-white px-3 py-1 rounded-full border border-brand-border">
-                              Aligned with {mMatch.giftName}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   <div className="border-t border-brand-border pt-8 space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-[11px] text-brand-muted uppercase tracking-widest font-medium">

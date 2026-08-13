@@ -580,11 +580,11 @@ async function startServer() {
         email: target,
         timestamp: new Date().toISOString(),
         topGifts: [
-          { name: "Leadership", score: 10, scripture: "Romans 12:8", description: "The gift of setting goals and inspiring others." },
-          { name: "Encouragement", score: 9, scripture: "Romans 12:8", description: "The gift of motivating and comforting others." },
-          { name: "Teaching", score: 8, scripture: "Romans 12:7", description: "The ability to explain and apply God's Word." },
-          { name: "Discernment", score: 8, scripture: "1 Corinthians 12:10", description: "The ability to distinguish truth." },
-          { name: "Hospitality", score: 7, scripture: "1 Peter 4:9", description: "Making guests feel welcome." }
+          { name: "Leadership", score: 10, scripture: "Romans 12:8", description: "The gift of setting goals and inspiring others.", serviceTeams: ["Board of Elders", "Team Lead", "Ministry Director"] },
+          { name: "Encouragement", score: 9, scripture: "Romans 12:8", description: "The gift of motivating and comforting others.", serviceTeams: ["Small Group Leader", "Care & Counsel", "Youth Mentor"] },
+          { name: "Teaching", score: 8, scripture: "Romans 12:7", description: "The ability to explain and apply God's Word.", serviceTeams: ["Sunday School", "Bible Study Leader", "Discipleship"] },
+          { name: "Discernment", score: 8, scripture: "1 Corinthians 12:10", description: "The ability to distinguish truth.", serviceTeams: ["Intercessory Prayer", "Prayer Team", "Care Ministry"] },
+          { name: "Hospitality", score: 7, scripture: "1 Peter 4:9", description: "Making guests feel welcome.", serviceTeams: ["Welcome Team", "Greeters", "Events & Kitchen"] }
         ],
         topMinistryMatches: [
           { teamName: "Board of Elders", giftName: "Leadership" },
