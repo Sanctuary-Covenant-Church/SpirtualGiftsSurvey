@@ -27,7 +27,7 @@ import {
   Info
 } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, getDoc, addDoc } from 'firebase/firestore';
 import Layout from './components/Layout';
 import AdminDashboard from './components/AdminDashboard';
 import Sanctuary5Hero from './components/Sanctuary5Hero';
@@ -36,6 +36,7 @@ import { INITIAL_QUESTIONS, INITIAL_GIFTS } from './constants';
 import { Question, Gift, SurveyResponse, SurveyResult, GiftMatch, MinistryMatch } from './types';
 import { generateResultsEmailHtml } from './lib/emailTemplate';
 import { trackEvent } from './utils/analytics';
+import { subscribeSurveyVersion, SurveyVersionInfo, DEFAULT_SURVEY_VERSION } from './utils/surveyVersion';
 
 type View = 'hero' | 'survey' | 'results' | 'admin';
 
@@ -102,6 +103,13 @@ export default function App() {
   const [questions, setQuestions] = useState<Question[]>(INITIAL_QUESTIONS);
   const [gifts, setGifts] = useState<Gift[]>(INITIAL_GIFTS);
   const [isDataLoading, setIsDataLoading] = useState(true);
+  const [surveyVersionInfo, setSurveyVersionInfo] = useState<SurveyVersionInfo>(DEFAULT_SURVEY_VERSION);
+
+  // Subscribe to real-time Survey Version from Firestore/local storage
+  useEffect(() => {
+    const unsub = subscribeSurveyVersion(setSurveyVersionInfo);
+    return () => unsub();
+  }, []);
 
   // Sync with Auth
   useEffect(() => {
@@ -361,7 +369,47 @@ export default function App() {
       }
 
       setIsEmailSubmitted(true);
-      trackEvent('survey_complete', { topGifts: finalResult.primaryGiftIds });
+      
+      // Persist completed survey result to Firestore 'results' collection
+      const resultDoc = {
+        surveyVersion: surveyVersionInfo.versionStr,
+        name: userInfo.name || 'Anonymous',
+        email: userInfo.email || '',
+        userName: userInfo.name || 'Anonymous',
+        userEmail: userInfo.email || '',
+        userId: userInfo.email || `user_${Date.now()}`,
+        timestamp: finalResult.timestamp || new Date().toISOString(),
+        primaryGiftIds: finalResult.primaryGiftIds || [],
+        topGifts: finalResult.topGifts || [],
+        topMinistryMatches: finalResult.topMinistryMatches || [],
+        scores: finalResult.scores || {}
+      };
+
+      if (isFirebaseConfigured && db) {
+        try {
+          await addDoc(collection(db, 'results'), resultDoc);
+        } catch (err) {
+          console.warn('Failed to persist survey result document to Firestore:', err);
+        }
+      }
+
+      // Local storage fallback
+      try {
+        const localRes = localStorage.getItem('sanctuary_results');
+        const parsed = localRes ? JSON.parse(localRes) : [];
+        parsed.unshift(resultDoc);
+        localStorage.setItem('sanctuary_results', JSON.stringify(parsed));
+      } catch {}
+
+      trackEvent('survey_complete', { 
+        surveyVersion: surveyVersionInfo.versionStr,
+        topGifts: finalResult.topGifts || finalResult.primaryGiftIds,
+        primaryGiftIds: finalResult.primaryGiftIds,
+        scores: finalResult.scores,
+        userName: userInfo.name || 'Anonymous',
+        userEmail: userInfo.email || '',
+        userId: userInfo.email || `user_${Date.now()}`
+      });
       setView('results');
     } catch (error: any) {
       console.error('Failed to submit results email:', error);

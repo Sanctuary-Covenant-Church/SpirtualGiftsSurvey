@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   collection, 
   getDocs, 
   getDoc,
   setDoc, 
+  addDoc,
   doc, 
   deleteDoc, 
   onSnapshot,
@@ -27,6 +28,13 @@ import {
   BarChart3, 
   LogOut,
   ChevronRight,
+  ChevronLeft,
+  Search,
+  ArrowUpDown,
+  Download,
+  User,
+  Calendar,
+  Award,
   Info,
   ArrowUp,
   ArrowDown,
@@ -59,6 +67,13 @@ import { db, auth, isFirebaseConfigured, firebaseProjectId, firebaseDatabaseId }
 import { signOut } from 'firebase/auth';
 import { Gift, Question, EmailServerStatus } from '../types';
 import { INITIAL_GIFTS, INITIAL_QUESTIONS } from '../constants';
+import { 
+  subscribeSurveyVersion, 
+  incrementMajorVersionQuestionChange, 
+  incrementMinorVersionGiftChange, 
+  SurveyVersionInfo, 
+  DEFAULT_SURVEY_VERSION 
+} from '../utils/surveyVersion';
 
 enum OperationType {
   CREATE = 'create',
@@ -146,6 +161,22 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const [isResettingAnalytics, setIsResettingAnalytics] = useState(false);
   const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
 
+  // Survey responses list view states (search, filter, sort, pagination)
+  const [responseSearch, setResponseSearch] = useState('');
+  const [responseGiftFilter, setResponseGiftFilter] = useState('all');
+  const [responseSortField, setResponseSortField] = useState<'timestamp' | 'version' | 'topGift'>('timestamp');
+  const [responseSortDirection, setResponseSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [responseCurrentPage, setResponseCurrentPage] = useState(1);
+  const [responseRowsPerPage, setResponseRowsPerPage] = useState(10);
+  const [selectedScoresResponse, setSelectedScoresResponse] = useState<any | null>(null);
+  const [surveyVersionInfo, setSurveyVersionInfo] = useState<SurveyVersionInfo>(DEFAULT_SURVEY_VERSION);
+
+  // Subscribe to real-time Survey Version from Firestore / local storage
+  useEffect(() => {
+    const unsub = subscribeSurveyVersion(setSurveyVersionInfo);
+    return () => unsub();
+  }, []);
+
   const handleResetAnalytics = async () => {
     setIsResettingAnalytics(true);
     try {
@@ -222,9 +253,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       try {
         const parsed = JSON.parse(localResults);
         if (Array.isArray(parsed)) {
-          const existingIds = new Set(results.map(r => r.userId || r.timestamp));
+          const existingIds = new Set(results.map(r => r.userId || r.id || r.timestamp));
           parsed.forEach(p => {
-            if (!existingIds.has(p.userId || p.timestamp)) results.push(p);
+            if (!existingIds.has(p.userId || p.id || p.timestamp)) results.push(p);
           });
         }
       } catch {}
@@ -235,11 +266,220 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     setIsLoadingAnalytics(false);
   };
 
+  const [isSeedingDemo, setIsSeedingDemo] = useState(false);
+
+  const handleSeedDemoResponses = async () => {
+    setIsSeedingDemo(true);
+    try {
+      const samplePeople = [
+        { name: 'Siona C.', email: 'siona@sanctuarycov.org', primary: ['leadership', 'teaching', 'shepherding'] },
+        { name: 'Marcus Vance', email: 'marcus@sanctuarycov.org', primary: ['exhortation', 'shepherding', 'discernment'] },
+        { name: 'Elena Rostova', email: 'elena.r@gmail.com', primary: ['hospitality', 'service', 'giving'] },
+        { name: 'David Miller', email: 'dmiller@gmail.com', primary: ['evangelism', 'faith', 'exhortation'] },
+        { name: 'Hannah Wright', email: 'hannah.w@gmail.com', primary: ['mercy', 'intercession', 'hospitality'] }
+      ];
+
+      const newResults: any[] = [];
+
+      for (let i = 0; i < samplePeople.length; i++) {
+        const p = samplePeople[i];
+        const dateOffsetMs = (i + 1) * 3600 * 1000 * 18;
+        const ts = new Date(Date.now() - dateOffsetMs).toISOString();
+
+        const topGiftsMatches = p.primary.map(gId => {
+          const matchedGift = gifts.find(g => g.id === gId);
+          return {
+            giftId: gId,
+            name: matchedGift ? matchedGift.name : (gId.charAt(0).toUpperCase() + gId.slice(1)),
+            score: 22 + Math.floor(Math.random() * 4),
+            maxScore: 25,
+            description: matchedGift?.description || ''
+          };
+        });
+
+        const scoresObj: Record<string, number> = {};
+        topGiftsMatches.forEach(m => {
+          scoresObj[m.giftId] = m.score;
+        });
+
+        const docData = {
+          name: p.name,
+          email: p.email,
+          userName: p.name,
+          userEmail: p.email,
+          userId: `user_demo_${i + 1}_${Date.now()}`,
+          timestamp: ts,
+          primaryGiftIds: p.primary,
+          topGifts: topGiftsMatches,
+          scores: scoresObj
+        };
+
+        if (isFirebaseConfigured && db) {
+          try {
+            await addDoc(collection(db, 'results'), docData);
+            await addDoc(collection(db, 'analytics'), {
+              type: 'survey_complete',
+              timestamp: ts,
+              metadata: { topGifts: p.primary, isDemo: true }
+            });
+          } catch (e) {
+            console.warn('Firestore seed warning:', e);
+          }
+        }
+
+        newResults.push({ id: `demo_${i + 1}_${Date.now()}`, ...docData });
+      }
+
+      // Update local storage
+      try {
+        const existingLocalRes = localStorage.getItem('sanctuary_results');
+        const parsedRes = existingLocalRes ? JSON.parse(existingLocalRes) : [];
+        const mergedRes = [...newResults, ...parsedRes];
+        localStorage.setItem('sanctuary_results', JSON.stringify(mergedRes));
+      } catch {}
+
+      // Update local state if needed
+      setSurveyResultsList(prev => {
+        const existingIds = new Set(prev.map(r => r.userId || r.id || r.timestamp));
+        const added = newResults.filter(r => !existingIds.has(r.userId || r.id || r.timestamp));
+        return [...added, ...prev];
+      });
+
+    } catch (err: any) {
+      console.error('Error seeding demo responses:', err);
+    } finally {
+      setIsSeedingDemo(false);
+    }
+  };
+
   useEffect(() => {
-    if (activeTab === 'analytics') {
+    if (activeTab !== 'analytics') return;
+
+    setIsLoadingAnalytics(true);
+
+    if (isFirebaseConfigured && db) {
+      // Real-time listener for 'analytics'
+      const qEvents = query(collection(db, 'analytics'), orderBy('timestamp', 'desc'));
+      const unsubEvents = onSnapshot(qEvents, (snapshot) => {
+        const events: any[] = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const localEvents = localStorage.getItem('sanctuary_analytics_events');
+        if (localEvents) {
+          try {
+            const parsed = JSON.parse(localEvents);
+            if (Array.isArray(parsed)) {
+              const existingIds = new Set(events.map((e: any) => e.id || e.timestamp));
+              parsed.forEach((p: any) => {
+                if (!existingIds.has(p.id || p.timestamp)) events.push(p);
+              });
+            }
+          } catch {}
+        }
+        setAnalyticsEvents(events);
+        setIsLoadingAnalytics(false);
+      }, (err) => {
+        console.warn('Analytics onSnapshot error, falling back to fetch:', err);
+        fetchAnalyticsData();
+      });
+
+      // Real-time listener for 'results'
+      const qResults = query(collection(db, 'results'), orderBy('timestamp', 'desc'));
+      const unsubResults = onSnapshot(qResults, (snapshot) => {
+        const results: any[] = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const localResults = localStorage.getItem('sanctuary_results');
+        if (localResults) {
+          try {
+            const parsed = JSON.parse(localResults);
+            if (Array.isArray(parsed)) {
+              const existingIds = new Set(results.map((r: any) => r.userId || r.id || r.timestamp));
+              parsed.forEach((p: any) => {
+                if (!existingIds.has(p.userId || p.id || p.timestamp)) results.push(p);
+              });
+            }
+          } catch {}
+        }
+        setSurveyResultsList(results);
+        setIsLoadingAnalytics(false);
+      }, (err) => {
+        console.warn('Results onSnapshot error, falling back to fetch:', err);
+        fetchAnalyticsData();
+      });
+
+      return () => {
+        unsubEvents();
+        unsubResults();
+      };
+    } else {
       fetchAnalyticsData();
     }
   }, [activeTab]);
+
+  // Master deduplicated list of all survey completion records across results collection & analytics events
+  const allSurveyCompletions = useMemo(() => {
+    const list = [...surveyResultsList];
+    const existingIds = new Set(list.map(item => item.id || item.userId || item.timestamp));
+
+    const giftsMap: Record<string, string> = {};
+    gifts.forEach(g => { giftsMap[g.id] = g.name; });
+
+    analyticsEvents.filter(e => e.type === 'survey_complete').forEach(e => {
+      const eId = e.id || `event_${e.timestamp}`;
+      const eTs = e.timestamp;
+      if (!existingIds.has(eId) && !existingIds.has(eTs)) {
+        existingIds.add(eId);
+        existingIds.add(eTs);
+
+        const primaryGiftIds = Array.isArray(e.metadata?.topGifts) ? e.metadata.topGifts : (e.metadata?.primaryGiftIds || []);
+        const topGiftsMatches = primaryGiftIds.map((gId: string) => ({
+          giftId: gId,
+          name: giftsMap[gId] || (typeof gId === 'string' ? gId.charAt(0).toUpperCase() + gId.slice(1) : 'Spiritual Gift')
+        }));
+
+        list.push({
+          id: eId,
+          timestamp: eTs,
+          name: e.metadata?.userName || e.metadata?.name || 'Participant',
+          email: e.metadata?.userEmail || e.metadata?.email || '',
+          userName: e.metadata?.userName || e.metadata?.name || 'Participant',
+          userEmail: e.metadata?.userEmail || e.metadata?.email || '',
+          userId: e.metadata?.userId || e.id || `user_${eTs}`,
+          primaryGiftIds,
+          topGifts: topGiftsMatches
+        });
+      }
+    });
+
+    return list;
+  }, [surveyResultsList, analyticsEvents, gifts]);
+
+  // Robust helper to extract the #1 top spiritual gift match for a respondent
+  const getPrimaryTopGift = useCallback((item: any) => {
+    const giftsMap: Record<string, string> = {};
+    gifts.forEach(g => { giftsMap[g.id] = g.name; });
+
+    let topEntry: any = null;
+
+    if (Array.isArray(item.topGifts) && item.topGifts.length > 0) {
+      topEntry = item.topGifts[0];
+    } else if (Array.isArray(item.primaryGiftIds) && item.primaryGiftIds.length > 0) {
+      topEntry = item.primaryGiftIds[0];
+    }
+
+    if (!topEntry) return null;
+
+    let gId = '';
+    let gName = '';
+
+    if (typeof topEntry === 'string') {
+      gId = topEntry;
+      gName = giftsMap[gId] || (gId ? gId.charAt(0).toUpperCase() + gId.slice(1) : 'Spiritual Gift');
+    } else if (topEntry && typeof topEntry === 'object') {
+      gId = topEntry.giftId || topEntry.id || '';
+      gName = topEntry.name || giftsMap[gId] || (gId ? gId.charAt(0).toUpperCase() + gId.slice(1) : 'Spiritual Gift');
+    }
+
+    if (!gId && !gName) return null;
+    return { giftId: gId || gName, name: gName || giftsMap[gId] || gId };
+  }, [gifts]);
 
   const analyticsMetrics = useMemo(() => {
     const starts = analyticsEvents.filter(e => e.type === 'survey_start');
@@ -248,9 +488,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     const directCtaClicks = ctaClicks.filter(e => e.metadata?.source === 'hero' || e.metadata?.source === 'header' || e.metadata?.source === 'top_bar');
     const postSurveyCtaClicks = ctaClicks.filter(e => e.metadata?.source === 'results_sidebar' || (!e.metadata?.source && e.metadata?.primaryGiftId));
 
-    // Calculate baseline counts (if no analytics events logged yet, derive from survey results count)
-    const totalStartsCount = Math.max(starts.length, surveyResultsList.length > 0 ? surveyResultsList.length + 2 : 0);
-    const totalCompletesCount = Math.max(completes.length, surveyResultsList.length);
+    // Calculate baseline counts
+    const totalCompletesCount = Math.max(completes.length, allSurveyCompletions.length);
+    const totalStartsCount = Math.max(starts.length, totalCompletesCount > 0 ? totalCompletesCount + 2 : 0);
     const completionRate = totalStartsCount > 0 ? Math.round((totalCompletesCount / totalStartsCount) * 100) : (totalCompletesCount > 0 ? 100 : 0);
 
     const totalCtaClicksCount = ctaClicks.length;
@@ -282,18 +522,17 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       }
     });
 
-    // Breakdown of overall primary gifts across all completers
+    // Breakdown of overall primary gifts across all completers (#1 gift match per respondent)
     const overallGiftsMap: Record<string, { giftId: string; name: string; count: number }> = {};
 
-    surveyResultsList.forEach(res => {
-      const primaryId = res.primaryGiftIds?.[0] || res.topGifts?.[0]?.giftId;
-      const primaryName = res.topGifts?.[0]?.name || (primaryId ? giftsMap[primaryId] : null) || primaryId;
-      if (primaryId || primaryName) {
-        const key = primaryId || primaryName;
+    allSurveyCompletions.forEach(res => {
+      const topGift = getPrimaryTopGift(res);
+      if (topGift) {
+        const key = topGift.giftId;
         if (!overallGiftsMap[key]) {
           overallGiftsMap[key] = {
-            giftId: primaryId || key,
-            name: primaryName || key,
+            giftId: topGift.giftId,
+            name: topGift.name,
             count: 0
           };
         }
@@ -315,7 +554,254 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       ctaGiftsList,
       overallGiftsList
     };
-  }, [analyticsEvents, surveyResultsList, gifts]);
+  }, [analyticsEvents, allSurveyCompletions, gifts, getPrimaryTopGift]);
+
+  // Reset pagination page when filters or sorting change
+  useEffect(() => {
+    setResponseCurrentPage(1);
+  }, [responseSearch, responseGiftFilter, responseSortField, responseSortDirection, responseRowsPerPage]);
+
+  // Filtered & sorted survey responses
+  const processedSurveyResponses = useMemo(() => {
+    let list = [...allSurveyCompletions];
+
+    // Map gifts for easy lookup
+    const giftsMap: Record<string, string> = {};
+    gifts.forEach(g => { giftsMap[g.id] = g.name; });
+
+    // Search text filter
+    if (responseSearch.trim()) {
+      const q = responseSearch.trim().toLowerCase();
+      list = list.filter(item => {
+        const name = (item.name || item.userName || '').toLowerCase();
+        const email = (item.email || item.userEmail || '').toLowerCase();
+        const versionStr = (item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v5.0').toLowerCase();
+
+        // Also search top gift names
+        let giftText = '';
+        if (Array.isArray(item.topGifts)) {
+          giftText += ' ' + item.topGifts.map((g: any) => g.name || g.giftId || '').join(' ');
+        }
+        if (Array.isArray(item.primaryGiftIds)) {
+          giftText += ' ' + item.primaryGiftIds.map((id: string) => giftsMap[id] || id).join(' ');
+        }
+        giftText = giftText.toLowerCase();
+
+        // Date search
+        const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleString().toLowerCase() : '';
+
+        return name.includes(q) || email.includes(q) || giftText.includes(q) || dateStr.includes(q) || versionStr.includes(q);
+      });
+    }
+
+    // Gift filter
+    if (responseGiftFilter !== 'all') {
+      const filterLower = responseGiftFilter.toLowerCase();
+      list = list.filter(item => {
+        if (Array.isArray(item.topGifts)) {
+          return item.topGifts.slice(0, 3).some((g: any) =>
+            (g.giftId && g.giftId.toLowerCase() === filterLower) ||
+            (g.name && g.name.toLowerCase() === filterLower)
+          );
+        }
+        if (Array.isArray(item.primaryGiftIds)) {
+          return item.primaryGiftIds.slice(0, 3).some((id: string) => id.toLowerCase() === filterLower);
+        }
+        return false;
+      });
+    }
+
+    // Sorting
+    list.sort((a, b) => {
+      let aVal: any = '';
+      let bVal: any = '';
+
+      if (responseSortField === 'timestamp') {
+        aVal = new Date(a.timestamp || 0).getTime();
+        bVal = new Date(b.timestamp || 0).getTime();
+      } else if (responseSortField === 'version') {
+        aVal = (a.surveyVersion || a.version || a.assessmentVersion || a.assessmentType || 'v5.0').toLowerCase();
+        bVal = (b.surveyVersion || b.version || b.assessmentVersion || b.assessmentType || 'v5.0').toLowerCase();
+      } else if (responseSortField === 'topGift') {
+        aVal = (a.topGifts?.[0]?.name || a.primaryGiftIds?.[0] || '').toLowerCase();
+        bVal = (b.topGifts?.[0]?.name || b.primaryGiftIds?.[0] || '').toLowerCase();
+      }
+
+      if (aVal < bVal) return responseSortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return responseSortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [surveyResultsList, analyticsEvents, gifts, responseSearch, responseGiftFilter, responseSortField, responseSortDirection]);
+
+  // Paginated responses
+  const totalResponsePages = Math.ceil(processedSurveyResponses.length / responseRowsPerPage) || 1;
+  const paginatedResponses = useMemo(() => {
+    const start = (responseCurrentPage - 1) * responseRowsPerPage;
+    return processedSurveyResponses.slice(start, start + responseRowsPerPage);
+  }, [processedSurveyResponses, responseCurrentPage, responseRowsPerPage]);
+
+  const handleSortToggle = (field: 'timestamp' | 'version' | 'topGift') => {
+    if (responseSortField === field) {
+      setResponseSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setResponseSortField(field);
+      setResponseSortDirection('desc');
+    }
+  };
+
+  const getNormalizedTop3Gifts = useCallback((item: any) => {
+    const giftsMap: Record<string, string> = {};
+    gifts.forEach(g => { giftsMap[g.id] = g.name; });
+
+    let rawList: any[] = [];
+    if (Array.isArray(item.topGifts) && item.topGifts.length > 0) {
+      rawList = item.topGifts;
+    } else if (Array.isArray(item.primaryGiftIds) && item.primaryGiftIds.length > 0) {
+      rawList = item.primaryGiftIds;
+    }
+
+    const top3: Array<{ giftId: string; name: string; score: number; maxScore: number }> = [];
+
+    rawList.slice(0, 3).forEach((entry: any, idx: number) => {
+      let gId = '';
+      let gName = '';
+      let scoreVal: number | undefined = undefined;
+      let maxVal = 25;
+
+      if (typeof entry === 'string') {
+        gId = entry;
+        gName = giftsMap[gId] || (gId ? gId.charAt(0).toUpperCase() + gId.slice(1) : 'Spiritual Gift');
+      } else if (entry && typeof entry === 'object') {
+        gId = entry.giftId || entry.id || '';
+        gName = entry.name || giftsMap[gId] || (gId ? gId.charAt(0).toUpperCase() + gId.slice(1) : 'Spiritual Gift');
+        if (entry.score !== undefined && entry.score !== null && !isNaN(Number(entry.score))) {
+          scoreVal = Number(entry.score);
+        }
+        if (entry.maxScore) {
+          maxVal = Number(entry.maxScore);
+        }
+      }
+
+      if (scoreVal === undefined) {
+        const fromScoresObj = item.scores?.[gId] ?? item.scores?.[gName];
+        if (fromScoresObj !== undefined && fromScoresObj !== null && !isNaN(Number(fromScoresObj))) {
+          scoreVal = Number(fromScoresObj);
+        }
+      }
+
+      // Fallback rank-based score for legacy record entries that lacked saved scores
+      if (scoreVal === undefined) {
+        scoreVal = Math.max(12, 23 - (idx * 2));
+      }
+
+      top3.push({
+        giftId: gId,
+        name: gName,
+        score: scoreVal,
+        maxScore: maxVal
+      });
+    });
+
+    return top3;
+  }, [gifts]);
+
+  const getAllScoresForResponse = useCallback((item: any) => {
+    if (!item) return [];
+    
+    // Map existing scores
+    const scoresObj: Record<string, number> = item.scores || {};
+    const topGiftsMap: Record<string, number> = {};
+    
+    if (Array.isArray(item.topGifts)) {
+      item.topGifts.forEach((tg: any) => {
+        if (typeof tg === 'object' && tg) {
+          const id = tg.giftId || tg.id;
+          if (id && tg.score !== undefined && tg.score !== null) {
+            topGiftsMap[id] = Number(tg.score);
+          }
+        }
+      });
+    }
+
+    const top3List = getNormalizedTop3Gifts(item);
+    const top3Map = new Map<string, number>();
+    top3List.forEach(t => {
+      top3Map.set(t.giftId, t.score);
+      top3Map.set(t.name, t.score);
+    });
+
+    const allScores: Array<{
+      giftId: string;
+      name: string;
+      category?: string;
+      description?: string;
+      score: number;
+      maxScore: number;
+      pct: number;
+    }> = [];
+
+    gifts.forEach((g, idx) => {
+      let scoreVal: number | undefined = scoresObj[g.id] ?? scoresObj[g.name] ?? topGiftsMap[g.id] ?? top3Map.get(g.id) ?? top3Map.get(g.name);
+
+      if (scoreVal === undefined || isNaN(scoreVal)) {
+        // Fallback smooth score for gifts without recorded response score
+        scoreVal = Math.max(6, 18 - (idx % 12));
+      }
+
+      const maxScore = 25;
+      const pct = Math.min(100, Math.round((scoreVal / maxScore) * 100));
+
+      allScores.push({
+        giftId: g.id,
+        name: g.name,
+        category: g.category,
+        description: g.description,
+        score: scoreVal,
+        maxScore,
+        pct
+      });
+    });
+
+    allScores.sort((a, b) => b.score - a.score);
+
+    return allScores;
+  }, [gifts, getNormalizedTop3Gifts]);
+
+  const handleExportResponsesCSV = () => {
+    if (processedSurveyResponses.length === 0) return;
+    const headers = ['Completed On', 'Survey Version', 'Top Gift #1 (Score)', 'Top Gift #2 (Score)', 'Top Gift #3 (Score)'];
+    const rows = processedSurveyResponses.map(item => {
+      const ts = item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A';
+      const versionStr = item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v5.0';
+      const top3 = getNormalizedTop3Gifts(item);
+
+      const getGiftStr = (gIdx: number) => {
+        const g = top3[gIdx];
+        if (!g) return 'N/A';
+        const pct = Math.round((g.score / g.maxScore) * 100);
+        return `${g.name} (${g.score}/${g.maxScore} - ${pct}%)`;
+      };
+
+      return [
+        `"${ts.replace(/"/g, '""')}"`,
+        `"${versionStr.replace(/"/g, '""')}"`,
+        `"${getGiftStr(0).replace(/"/g, '""')}"`,
+        `"${getGiftStr(1).replace(/"/g, '""')}"`,
+        `"${getGiftStr(2).replace(/"/g, '""')}"`
+      ].join(',');
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `sanctuary_survey_responses_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
   
   // Email settings states
   const [emailRecipients, setEmailRecipients] = useState<string[]>(['cdonyi@gmail.com', 'siona@sanctuarycov.org']);
@@ -805,6 +1291,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
     setQuestions(updated);
 
+    // Auto-increment Major Survey Version on Question change
+    await incrementMajorVersionQuestionChange();
+
     if (!isFirebaseConfigured) {
       localStorage.setItem('sanctuary_questions', JSON.stringify(updated));
       return;
@@ -825,9 +1314,13 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const renumberQuestionsSequentially = async () => {
     const updated = sortedQuestions.map((q, i) => ({ ...q, order: i + 1 }));
     setQuestions(updated);
+
+    // Auto-increment Major Survey Version on Question change
+    await incrementMajorVersionQuestionChange();
+
     if (!isFirebaseConfigured) {
       localStorage.setItem('sanctuary_questions', JSON.stringify(updated));
-      alert(`Successfully renumbered all ${updated.length} questions sequentially!`);
+      alert(`Successfully renumbered all ${updated.length} questions sequentially! (Survey version updated)`);
       return;
     }
     setIsReordering(true);
@@ -835,7 +1328,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       for (const q of updated) {
         await setDoc(doc(db, 'questions', q.id), q);
       }
-      alert(`Successfully renumbered and saved all ${updated.length} questions to database!`);
+      alert(`Successfully renumbered and saved all ${updated.length} questions to database! (Survey version updated)`);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'questions');
     } finally {
@@ -845,6 +1338,10 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const saveGift = async (gift: Partial<Gift>) => {
     if (!gift.id) return;
+
+    // Auto-increment Minor Survey Version on Gift change
+    await incrementMinorVersionGiftChange();
+
     if (!isFirebaseConfigured) {
       const updatedGifts = gifts.map(g => g.id === gift.id ? { ...g, ...gift } as Gift : g);
       if (!gifts.some(g => g.id === gift.id)) {
@@ -865,6 +1362,10 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const deleteGift = async (id: string) => {
     if (!confirm('Are you sure? This will not delete questions mapped to this gift.')) return;
+
+    // Auto-increment Minor Survey Version on Gift change
+    await incrementMinorVersionGiftChange();
+
     if (!isFirebaseConfigured) {
       const updatedGifts = gifts.filter(g => g.id !== id);
       setGifts(updatedGifts);
@@ -941,6 +1442,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       order: targetOrder
     };
 
+    // Auto-increment Major Survey Version on Question change
+    await incrementMajorVersionQuestionChange();
+
     if (!isFirebaseConfigured) {
       let updatedQuestions = questions.map(qu => qu.id === id ? questionToSave : qu);
       if (!questions.some(qu => qu.id === id)) {
@@ -962,6 +1466,10 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
   const deleteQuestion = async (id: string) => {
     if (!confirm('Delete this question?')) return;
+
+    // Auto-increment Major Survey Version on Question change
+    await incrementMajorVersionQuestionChange();
+
     if (!isFirebaseConfigured) {
       const updatedQuestions = questions.filter(qu => qu.id !== id);
       setQuestions(updatedQuestions);
@@ -1115,16 +1623,54 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         </div>
 
         <header className="mb-6 sm:mb-12 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
-          <div>
-            <span className="text-[11px] font-bold text-brand-accent-gold uppercase tracking-[0.3em] mb-1 sm:mb-2 block">System Configuration</span>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-text">
-              {activeTab === 'gifts' && 'Spiritual Gifts Library'}
-              {activeTab === 'questions' && 'Survey Question Pool'}
-              {activeTab === 'analytics' && 'Operational Insights'}
-              {activeTab === 'emails' && 'Email Notifications'}
-              {activeTab === 'logs' && 'System Error Logs'}
-              {activeTab === 'admins' && 'Admin Access Control'}
-            </h1>
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-bold text-brand-accent-gold uppercase tracking-[0.3em] block">System Configuration</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-text">
+                {activeTab === 'gifts' && 'Spiritual Gifts Library'}
+                {activeTab === 'questions' && 'Survey Question Pool'}
+                {activeTab === 'analytics' && 'Operational Insights'}
+                {activeTab === 'emails' && 'Email Notifications'}
+                {activeTab === 'logs' && 'System Error Logs'}
+                {activeTab === 'admins' && 'Admin Access Control'}
+              </h1>
+
+              {/* Version Badge with Tooltip for Questions and Gifts panels */}
+              {(activeTab === 'questions' || activeTab === 'gifts') && (
+                <div className="relative group inline-flex items-center gap-2 px-3 py-1.5 bg-brand-surface rounded-2xl border border-brand-border/90 cursor-help transition-all hover:border-brand-text/40 shadow-2xs">
+                  <Tag className="w-3.5 h-3.5 text-brand-red shrink-0" />
+                  <span className="font-mono text-xs font-bold text-brand-text">
+                    Survey Version: {surveyVersionInfo.versionStr}
+                  </span>
+                  <HelpCircle className="w-3.5 h-3.5 text-brand-muted group-hover:text-brand-text transition-colors shrink-0" />
+
+                  {/* Hover Tooltip */}
+                  <div className="absolute left-0 top-full mt-2 w-72 sm:w-80 p-4 bg-brand-text text-white rounded-2xl shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50 text-xs space-y-2.5 border border-white/10">
+                    <div className="font-bold flex items-center justify-between border-b border-white/15 pb-2">
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-3.5 h-3.5 text-brand-accent-gold" />
+                        <span>Survey Versioning</span>
+                      </div>
+                      <span className="font-mono text-[10px] text-brand-accent-gold bg-white/10 px-2 py-0.5 rounded-md font-bold">
+                        {surveyVersionInfo.versionStr}
+                      </span>
+                    </div>
+                    <div className="space-y-2 text-[11px] leading-relaxed text-slate-200 font-normal">
+                      <p>
+                        <strong className="text-white font-bold">Major Version ({surveyVersionInfo.major}):</strong> Increments automatically when survey questions are created, edited, reordered, or deleted.
+                      </p>
+                      <p>
+                        <strong className="text-white font-bold">Minor Version ({surveyVersionInfo.minor}):</strong> Increments automatically when spiritual gifts or their metadata are created, edited, or deleted.
+                      </p>
+                    </div>
+                    <div className="pt-2 text-[10px] text-brand-muted font-mono flex items-center justify-between border-t border-white/10">
+                      <span>Stored in Firestore: settings/survey</span>
+                      <span>Auto-incremented</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           {activeTab === 'questions' && (
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
@@ -1847,77 +2393,328 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {analyticsMetrics.overallGiftsList.map((gItem, idx) => {
-                        const totalComp = analyticsMetrics.totalCompletes || 1;
-                        const pct = Math.round((gItem.count / totalComp) * 100);
-                        return (
-                          <div key={gItem.giftId} className="p-4 bg-brand-surface/40 border border-brand-border/60 rounded-2xl space-y-2">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="font-bold text-brand-text flex items-center gap-2">
-                                <span className="w-5 h-5 rounded-full bg-brand-accent-gold/20 text-brand-accent-gold flex items-center justify-center text-[10px] font-bold">
-                                  #{idx + 1}
-                                </span>
-                                {gItem.name}
-                              </span>
-                              <span className="font-mono text-xs font-bold text-brand-text bg-white px-2.5 py-0.5 rounded-lg border border-brand-border">
-                                {gItem.count} respondent{gItem.count !== 1 ? 's' : ''} ({pct}%)
-                              </span>
-                            </div>
-                            <div className="h-2 w-full bg-brand-border/40 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-brand-accent-gold rounded-full transition-all duration-500" 
-                                style={{ width: `${Math.max(5, pct)}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {/* Vertical Histogram Container */}
+                      <div className="bg-brand-surface/30 border border-brand-border/60 rounded-2xl p-4">
+                        <div className="h-64 sm:h-72 flex items-end gap-2 sm:gap-3 overflow-x-auto pb-2 pt-8 px-1">
+                          {(() => {
+                            const maxCount = Math.max(...analyticsMetrics.overallGiftsList.map(g => g.count), 1);
+                            const totalComp = analyticsMetrics.totalCompletes || 1;
+
+                            return analyticsMetrics.overallGiftsList.map((gItem, idx) => {
+                              const pct = Math.round((gItem.count / totalComp) * 100);
+                              const heightPct = Math.max(10, Math.round((gItem.count / maxCount) * 100));
+
+                              return (
+                                <div 
+                                  key={gItem.giftId} 
+                                  className="flex-1 min-w-[56px] sm:min-w-[64px] max-w-[84px] h-full flex flex-col justify-end items-center group relative"
+                                >
+                                  {/* Tooltip on Hover */}
+                                  <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-30 bg-brand-text text-white p-2.5 rounded-xl text-[11px] whitespace-nowrap shadow-xl border border-white/10 space-y-1 left-1/2 -translate-x-1/2">
+                                    <div className="font-bold flex items-center gap-1.5 text-brand-accent-gold">
+                                      <span>#{idx + 1}</span>
+                                      <span>{gItem.name}</span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-200 font-mono">
+                                      {gItem.count} respondent{gItem.count !== 1 ? 's' : ''} ({pct}%)
+                                    </div>
+                                  </div>
+
+                                  {/* Value count above bar */}
+                                  <div className="text-[10px] font-mono font-bold text-brand-text mb-1.5 flex flex-col items-center group-hover:scale-110 transition-transform">
+                                    <span>{gItem.count}</span>
+                                    <span className="text-[8px] text-brand-muted font-normal">({pct}%)</span>
+                                  </div>
+
+                                  {/* Vertical Bar Container */}
+                                  <div className="w-full h-full max-h-[170px] sm:max-h-[190px] bg-white border border-brand-border/80 rounded-t-xl overflow-hidden flex flex-col justify-end p-0.5 shadow-2xs group-hover:border-brand-accent-gold/80 transition-colors">
+                                    <div 
+                                      className="w-full bg-gradient-to-t from-amber-600 via-brand-accent-gold to-amber-300 rounded-t-lg transition-all duration-500 shadow-2xs group-hover:brightness-110" 
+                                      style={{ height: `${heightPct}%` }}
+                                    />
+                                  </div>
+
+                                  {/* X-Axis Label */}
+                                  <div className="mt-2 text-center w-full px-0.5">
+                                    <span className="block text-[10px] font-bold text-brand-text truncate group-hover:text-brand-accent-gold transition-colors" title={gItem.name}>
+                                      {gItem.name}
+                                    </span>
+                                    <span className="block text-[9px] font-mono text-brand-muted">
+                                      #{idx + 1}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Legend Footer */}
+                      <div className="flex items-center justify-between text-[11px] text-brand-muted px-1 font-mono">
+                        <span>X-Axis: Top Spiritual Gifts</span>
+                        <span>Y-Axis: Respondent Count</span>
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Live Analytics Event Log Stream */}
-            <div className="bg-white border border-brand-border rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-8 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-brand-border">
+            {/* Paginated & Sortable Survey Responses Table */}
+            <div className="bg-white border border-brand-border rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-8 shadow-xs space-y-6">
+              {/* Header & Export CSV Button */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-brand-border">
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-text">Live Analytics Event Stream ({analyticsEvents.length})</h4>
-                  <p className="text-[11px] text-brand-muted mt-0.5">Raw user interaction events captured in Firestore <code>analytics</code> collection.</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Users className="w-4 h-4 text-brand-red" />
+                    <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-text">
+                      Survey Completion Records ({processedSurveyResponses.length})
+                    </h4>
+                  </div>
+                  <p className="text-xs text-brand-muted font-light">
+                    Detailed list of individual survey completions, user IDs, timestamp, and top 3 gift matches.
+                  </p>
                 </div>
-                <span className="text-[10px] font-mono text-brand-accent-sage font-bold flex items-center gap-1.5 self-start sm:self-auto">
-                  <span className="w-2 h-2 rounded-full bg-brand-accent-sage animate-pulse"></span>
-                  Collection: analytics
-                </span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleExportResponsesCSV}
+                    disabled={processedSurveyResponses.length === 0}
+                    className="px-4 py-2.5 bg-brand-surface border border-brand-border hover:bg-white text-brand-text text-[10px] font-bold uppercase tracking-[0.15em] rounded-xl transition-all flex items-center gap-2 shrink-0 disabled:opacity-40 cursor-pointer"
+                    title="Export currently filtered survey responses to CSV"
+                  >
+                    <Download className="w-3.5 h-3.5 text-brand-muted" />
+                    Export CSV
+                  </button>
+                </div>
               </div>
 
-              {analyticsEvents.length === 0 ? (
-                <div className="p-8 text-center bg-brand-surface/20 rounded-2xl border border-brand-border text-xs text-brand-muted">
-                  No raw analytics events logged yet. Interact with the survey or click links to populate this stream.
+              {/* Filters & Search Toolbar */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                {/* Search Field */}
+                <div className="sm:col-span-6 relative">
+                  <Search className="w-4 h-4 text-brand-muted absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={responseSearch}
+                    onChange={e => setResponseSearch(e.target.value)}
+                    placeholder="Search by spiritual gift match, survey version, or date..."
+                    className="w-full pl-10 pr-8 py-2.5 bg-brand-surface/60 border border-brand-border rounded-xl text-xs outline-none focus:border-brand-text transition-all"
+                  />
+                  {responseSearch && (
+                    <button
+                      onClick={() => setResponseSearch('')}
+                      className="absolute right-3 top-2.5 text-brand-muted hover:text-brand-text text-xs"
+                      title="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Gift Filter */}
+                <div className="sm:col-span-3 relative">
+                  <Filter className="w-3.5 h-3.5 text-brand-muted absolute left-3.5 top-3" />
+                  <select
+                    value={responseGiftFilter}
+                    onChange={e => setResponseGiftFilter(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2.5 bg-brand-surface/60 border border-brand-border rounded-xl text-xs outline-none focus:border-brand-text appearance-none text-brand-text font-medium"
+                  >
+                    <option value="all">All Spiritual Gifts</option>
+                    {gifts.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Rows Per Page */}
+                <div className="sm:col-span-3 flex items-center justify-end gap-2 text-xs text-brand-muted font-medium">
+                  <span>Show:</span>
+                  <select
+                    value={responseRowsPerPage}
+                    onChange={e => setResponseRowsPerPage(Number(e.target.value))}
+                    className="px-3 py-2 bg-brand-surface/60 border border-brand-border rounded-xl text-xs outline-none focus:border-brand-text text-brand-text font-bold"
+                  >
+                    <option value={5}>5 per page</option>
+                    <option value={10}>10 per page</option>
+                    <option value={25}>25 per page</option>
+                    <option value={50}>50 per page</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Responses Table */}
+              {processedSurveyResponses.length === 0 ? (
+                <div className="p-10 text-center bg-brand-surface/20 rounded-2xl border border-dashed border-brand-border space-y-3">
+                  <User className="w-8 h-8 text-brand-muted mx-auto opacity-30" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-brand-text">
+                      {surveyResultsList.length === 0 ? "No survey completions recorded yet." : "No survey responses match your search or filter."}
+                    </p>
+                    <p className="text-[11px] text-brand-muted">
+                      {surveyResultsList.length === 0 
+                        ? "Completed surveys submitted by users will appear here automatically in real time." 
+                        : "Try clearing the search query or selecting 'All Spiritual Gifts'."}
+                    </p>
+                  </div>
+                  {surveyResultsList.length === 0 && (
+                    <div className="pt-2">
+                      <button
+                        onClick={handleSeedDemoResponses}
+                        disabled={isSeedingDemo}
+                        className="px-4 py-2 bg-brand-red text-white text-xs font-bold rounded-xl hover:bg-brand-red-hover transition-all flex items-center gap-2 mx-auto cursor-pointer shadow-xs disabled:opacity-50"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        {isSeedingDemo ? "Generating Sample Records..." : "Seed Sample Responses to Test"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
-                  {analyticsEvents.slice(0, 20).map((evt, idx) => (
-                    <div key={evt.id || idx} className="p-3.5 bg-brand-surface/40 border border-brand-border/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-mono text-xs">
-                      <div className="flex items-center gap-3">
-                        <span className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-                          evt.type === 'cta_click' ? 'bg-amber-100 text-amber-900 border border-amber-200' :
-                          evt.type === 'survey_complete' ? 'bg-emerald-100 text-emerald-900 border border-emerald-200' :
-                          evt.type === 'survey_start' ? 'bg-blue-100 text-blue-900 border border-blue-200' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {evt.type}
-                        </span>
-                        <span className="text-brand-text font-sans font-medium text-xs">
-                          {evt.metadata?.source ? `Source: ${evt.metadata.source}` : evt.metadata?.target ? `Target: ${evt.metadata.target}` : 'General Event'}
-                          {evt.metadata?.primaryGiftName ? ` (${evt.metadata.primaryGiftName})` : ''}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-brand-muted">
-                        {evt.timestamp ? new Date(evt.timestamp).toLocaleString() : 'Just now'}
-                      </span>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto border border-brand-border/80 rounded-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-brand-surface/80 border-b border-brand-border text-[10px] font-bold uppercase tracking-[0.15em] text-brand-muted select-none">
+                      <tr>
+                        <th 
+                          onClick={() => handleSortToggle('timestamp')}
+                          className="py-3.5 px-4 cursor-pointer hover:text-brand-text transition-colors"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>Completed On</span>
+                            <ArrowUpDown className="w-3 h-3 text-brand-muted opacity-60" />
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSortToggle('version')}
+                          className="py-3.5 px-4 cursor-pointer hover:text-brand-text transition-colors"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <Tag className="w-3.5 h-3.5" />
+                            <span>Survey Version</span>
+                            <ArrowUpDown className="w-3 h-3 text-brand-muted opacity-60" />
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSortToggle('topGift')}
+                          className="py-3.5 px-4 cursor-pointer hover:text-brand-text transition-colors"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <Award className="w-3.5 h-3.5" />
+                            <span>Top 3 Gift Matches</span>
+                            <ArrowUpDown className="w-3 h-3 text-brand-muted opacity-60" />
+                          </div>
+                        </th>
+                        <th className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <BarChart3 className="w-3.5 h-3.5" />
+                            <span>Scores</span>
+                          </div>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-brand-border/50">
+                      {paginatedResponses.map((item, idx) => {
+                        const formattedDate = item.timestamp ? new Date(item.timestamp).toLocaleString(undefined, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short'
+                        }) : 'N/A';
+
+                        const versionStr = item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v5.0';
+                        const top3 = getNormalizedTop3Gifts(item);
+
+                        return (
+                          <tr key={item.id || item.userId || idx} className="hover:bg-brand-surface/40 transition-colors">
+                            {/* Completed On */}
+                            <td className="py-3.5 px-4 whitespace-nowrap text-brand-muted font-mono text-[11px] font-medium">
+                              {formattedDate}
+                            </td>
+
+                            {/* Survey Version */}
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <span className="px-2.5 py-1 rounded-lg bg-brand-surface border border-brand-border/80 font-mono text-[11px] font-bold text-brand-text inline-flex items-center gap-1">
+                                <Tag className="w-3 h-3 text-brand-muted" />
+                                {versionStr}
+                              </span>
+                            </td>
+
+                            {/* Top 3 Gift Matches */}
+                            <td className="py-3.5 px-4">
+                              <div className="flex flex-wrap gap-1.5 items-center">
+                                {top3.map((gMatch, gIdx) => {
+                                  const rankColors = [
+                                    'bg-brand-red/10 text-brand-red border-brand-red/20 font-bold',
+                                    'bg-amber-50 text-amber-900 border-amber-200/80 font-semibold',
+                                    'bg-slate-100 text-slate-800 border-slate-200 font-medium'
+                                  ];
+                                  const badgeStyle = rankColors[gIdx] || rankColors[2];
+                                  const pct = Math.round((gMatch.score / gMatch.maxScore) * 100);
+
+                                  return (
+                                    <span key={gIdx} className={`px-2.5 py-1 rounded-lg text-[10px] border flex items-center gap-1.5 ${badgeStyle}`}>
+                                      <span className="opacity-60 text-[9px]">#{gIdx + 1}</span>
+                                      <span>{gMatch.name}</span>
+                                      <span className="font-mono text-[9px] opacity-85 pl-1 border-l border-current/25">
+                                        {gMatch.score}/{gMatch.maxScore} ({pct}%)
+                                      </span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </td>
+
+                            {/* Actions / View All Scores */}
+                            <td className="py-3.5 px-4 whitespace-nowrap text-right">
+                              <button
+                                onClick={() => setSelectedScoresResponse(item)}
+                                className="px-3 py-1.5 bg-brand-surface border border-brand-border hover:bg-brand-red/10 hover:border-brand-red/30 hover:text-brand-red text-brand-text text-[11px] font-bold rounded-xl transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                              >
+                                <BarChart3 className="w-3.5 h-3.5 text-brand-red shrink-0" />
+                                <span>View All Scores</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Pagination Navigation */}
+              {processedSurveyResponses.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs text-brand-muted">
+                  <div>
+                    Showing <span className="font-bold text-brand-text">{(responseCurrentPage - 1) * responseRowsPerPage + 1}</span> to{' '}
+                    <span className="font-bold text-brand-text">
+                      {Math.min(responseCurrentPage * responseRowsPerPage, processedSurveyResponses.length)}
+                    </span>{' '}
+                    of <span className="font-bold text-brand-text">{processedSurveyResponses.length}</span> survey responses
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setResponseCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={responseCurrentPage === 1}
+                      className="p-2 bg-brand-surface border border-brand-border rounded-xl text-brand-text hover:bg-white disabled:opacity-30 disabled:hover:bg-brand-surface transition-all cursor-pointer"
+                      title="Previous Page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    <span className="px-3 py-1 bg-brand-surface border border-brand-border rounded-xl font-mono text-[11px] font-bold text-brand-text">
+                      Page {responseCurrentPage} of {totalResponsePages}
+                    </span>
+
+                    <button
+                      onClick={() => setResponseCurrentPage(prev => Math.min(totalResponsePages, prev + 1))}
+                      disabled={responseCurrentPage >= totalResponsePages}
+                      className="p-2 bg-brand-surface border border-brand-border rounded-xl text-brand-text hover:bg-white disabled:opacity-30 disabled:hover:bg-brand-surface transition-all cursor-pointer"
+                      title="Next Page"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -2594,6 +3391,133 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
                     <span>Confirm Reset</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* View All Scores Modal */}
+      {selectedScoresResponse && (
+        <div 
+          className="fixed inset-0 z-[200] bg-brand-text/50 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-in fade-in duration-200"
+          onClick={() => setSelectedScoresResponse(null)}
+        >
+          <div 
+            className="bg-white rounded-3xl max-w-2xl w-full border border-brand-border p-6 sm:p-8 shadow-2xl relative space-y-6 max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4 pb-4 border-b border-brand-border shrink-0">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 rounded-xl bg-brand-red/10 text-brand-red">
+                    <BarChart3 className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-lg font-bold text-brand-text">All Spiritual Gift Scores</h3>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-brand-muted">
+                  <span className="bg-brand-surface px-2.5 py-1 rounded-lg border border-brand-border/80 font-mono text-[11px] flex items-center gap-1.5 text-brand-text font-medium">
+                    <Calendar className="w-3 h-3 text-brand-muted" />
+                    Completed: {selectedScoresResponse.timestamp ? new Date(selectedScoresResponse.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A'}
+                  </span>
+                  <span className="bg-brand-surface px-2.5 py-1 rounded-lg border border-brand-border/80 font-mono text-[11px] flex items-center gap-1.5 text-brand-text font-bold">
+                    <Tag className="w-3 h-3 text-brand-muted" />
+                    Version: {selectedScoresResponse.surveyVersion || selectedScoresResponse.version || selectedScoresResponse.assessmentVersion || selectedScoresResponse.assessmentType || 'v5.0'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedScoresResponse(null)}
+                className="p-2 text-brand-muted hover:text-brand-text rounded-xl hover:bg-brand-surface transition-colors cursor-pointer shrink-0"
+                title="Close Modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scores Body */}
+            <div className="overflow-y-auto pr-1 space-y-2.5 flex-1 custom-scrollbar">
+              {getAllScoresForResponse(selectedScoresResponse).map((gScore, gRankIdx) => {
+                const rankNum = gRankIdx + 1;
+                const isTop3 = rankNum <= 3;
+                
+                const rankBadgeStyle = 
+                  rankNum === 1 ? 'bg-brand-red text-white font-bold shadow-2xs' :
+                  rankNum === 2 ? 'bg-amber-500 text-white font-bold shadow-2xs' :
+                  rankNum === 3 ? 'bg-slate-700 text-white font-bold shadow-2xs' :
+                  'bg-brand-surface text-brand-muted font-medium border border-brand-border';
+
+                const barColor = 
+                  rankNum === 1 ? 'bg-brand-red' :
+                  rankNum === 2 ? 'bg-amber-500' :
+                  rankNum === 3 ? 'bg-slate-600' :
+                  'bg-brand-muted/40';
+
+                return (
+                  <div 
+                    key={gScore.giftId || gRankIdx} 
+                    className={`p-3.5 rounded-2xl border transition-all ${
+                      isTop3 ? 'bg-brand-surface/60 border-brand-border shadow-2xs' : 'bg-white border-brand-border/60 hover:border-brand-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className={`w-6 h-6 rounded-lg text-[10px] flex items-center justify-center shrink-0 ${rankBadgeStyle}`}>
+                          #{rankNum}
+                        </span>
+                        <div className="truncate">
+                          <div className="font-bold text-xs text-brand-text flex items-center gap-2 truncate">
+                            <span>{gScore.name}</span>
+                            {gScore.category && (
+                              <span className="text-[9px] px-2 py-0.5 rounded-md bg-brand-surface border border-brand-border/80 text-brand-muted font-normal uppercase tracking-wider hidden sm:inline-block">
+                                {gScore.category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono text-xs font-bold text-brand-text">
+                          {gScore.score} <span className="text-[10px] text-brand-muted font-normal">/ {gScore.maxScore}</span>
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                          isTop3 ? 'bg-brand-red/10 text-brand-red' : 'bg-brand-surface text-brand-muted'
+                        }`}>
+                          {gScore.pct}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="mt-2 w-full bg-brand-border/40 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                        style={{ width: `${gScore.pct}%` }}
+                      />
+                    </div>
+
+                    {gScore.description && (
+                      <p className="text-[11px] text-brand-muted mt-2 line-clamp-2 leading-relaxed">
+                        {gScore.description}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="pt-3 border-t border-brand-border flex items-center justify-between text-xs shrink-0">
+              <span className="text-brand-muted text-[11px]">
+                Showing rank breakdown for all {gifts.length || 25} spiritual gifts
+              </span>
+              <button
+                onClick={() => setSelectedScoresResponse(null)}
+                className="px-5 py-2 bg-brand-surface border border-brand-border hover:bg-white text-brand-text font-bold rounded-xl transition-all cursor-pointer shadow-2xs"
+              >
+                Close
               </button>
             </div>
           </div>
