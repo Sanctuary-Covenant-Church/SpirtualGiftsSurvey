@@ -79,14 +79,14 @@ export default function Sanctuary5Hero({ onStartSurvey }: Sanctuary5HeroProps) {
       <div className="text-center max-w-3xl mx-auto mb-10">
         <h1 className="text-4xl sm:text-6xl font-serif italic text-brand-text mb-6 leading-[1.15]">
           Discover How God Wired You <br className="hidden sm:inline" />
-          <span className="text-brand-red">To Serve Our Neighbors</span>
+          <span className="text-brand-red">To Serve</span>
         </h1>
         <p className="text-base sm:text-lg text-brand-muted font-light leading-relaxed mb-4">
           <strong className="font-semibold text-brand-red">SERVE: We are good neighbors</strong>{' '}
           <span className="font-serif italic text-brand-muted opacity-90">(Luke 4:14-21)</span>
         </p>
         <p className="text-base sm:text-lg text-brand-muted font-light leading-relaxed">
-          Uncovering your unique spiritual gifts empowers you to serve authentically, align with your divine design, and partner with Jesus to bring healing, grace, and hope to Minneapolis and beyond.
+          God has uniquely gifted you to make a difference. Discover your spiritual gifts and explore how you can use them to strengthen our church family, love and serve our neighbors, and join in what God is doing in North Minneapolis and beyond.
         </p>
       </div>
 
