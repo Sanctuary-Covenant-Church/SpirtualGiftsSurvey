@@ -28,8 +28,8 @@ export interface SurveyEmailPayload {
 export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
   const { name, email, timestamp, topGifts, topMinistryMatches } = data;
   const formattedDate = timestamp 
-    ? new Date(timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-    : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    ? new Date(timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' })
+    : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' });
 
   const giftsHtml = topGifts.slice(0, 5).map((gift, idx) => `
     <tr style="border-bottom: 1px solid #EAE7E1;">

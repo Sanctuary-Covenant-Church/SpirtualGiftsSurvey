@@ -851,7 +851,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       const emailVal = isConsented ? (item.email || item.userEmail || 'N/A') : '[Consent Withheld]';
       const consentStatus = isConsented ? 'Consented' : (item.optedOutByAdmin ? 'Opted Out by Admin' : 'Consent Withheld');
 
-      const ts = item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A';
+      const ts = item.timestamp 
+        ? new Date(item.timestamp).toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'short', timeStyle: 'short' })
+        : 'N/A';
       const versionStr = item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v1.0';
       const top3 = getNormalizedTop3Gifts(item);
 
@@ -879,7 +881,8 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `sanctuary_survey_responses_${new Date().toISOString().slice(0, 10)}.csv`);
+    const centralDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
+    link.setAttribute('download', `sanctuary_survey_responses_${centralDateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -2733,9 +2736,10 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     </thead>
                     <tbody className="divide-y divide-brand-border/50">
                       {paginatedResponses.map((item, idx) => {
-                        const formattedDate = item.timestamp ? new Date(item.timestamp).toLocaleString(undefined, {
+                        const formattedDate = item.timestamp ? new Date(item.timestamp).toLocaleString('en-US', {
                           dateStyle: 'medium',
-                          timeStyle: 'short'
+                          timeStyle: 'short',
+                          timeZone: 'America/Chicago'
                         }) : 'N/A';
 
                         const versionStr = item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v1.0';
@@ -2763,8 +2767,8 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                                         Consented
                                       </span>
                                       {item.consentTimestamp && (
-                                        <span className="text-[9px] font-mono text-brand-muted" title={`Consent Date: ${new Date(item.consentTimestamp).toLocaleString()}`}>
-                                          {new Date(item.consentTimestamp).toLocaleDateString()}
+                                        <span className="text-[9px] font-mono text-brand-muted" title={`Consent Date: ${new Date(item.consentTimestamp).toLocaleString('en-US', { timeZone: 'America/Chicago' })}`}>
+                                          {new Date(item.consentTimestamp).toLocaleDateString('en-US', { timeZone: 'America/Chicago' })}
                                         </span>
                                       )}
                                     </div>
@@ -3264,7 +3268,7 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
                             {log.context || 'System Error'}
                           </span>
                           <span className="text-[10px] text-brand-muted">
-                            {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'Just now'}
+                            {log.timestamp ? new Date(log.timestamp).toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'short', timeStyle: 'short' }) : 'Just now'}
                           </span>
                         </div>
                         <p className="text-brand-text font-sans text-xs font-semibold pt-1">
@@ -3627,7 +3631,7 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
                 <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-brand-muted">
                   <span className="bg-brand-surface px-2.5 py-1 rounded-lg border border-brand-border/80 font-mono text-[11px] flex items-center gap-1.5 text-brand-text font-medium">
                     <Calendar className="w-3 h-3 text-brand-muted" />
-                    Completed: {selectedScoresResponse.timestamp ? new Date(selectedScoresResponse.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A'}
+                    Completed: {selectedScoresResponse.timestamp ? new Date(selectedScoresResponse.timestamp).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Chicago' }) : 'N/A'}
                   </span>
                   <span className="bg-brand-surface px-2.5 py-1 rounded-lg border border-brand-border/80 font-mono text-[11px] flex items-center gap-1.5 text-brand-text font-bold">
                     <Tag className="w-3 h-3 text-brand-muted" />
