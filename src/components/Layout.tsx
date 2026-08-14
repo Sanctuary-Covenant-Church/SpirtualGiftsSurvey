@@ -93,7 +93,7 @@ export default function Layout({
                 : 'text-brand-muted hover:text-brand-text border-transparent'
             }`}
           >
-            Spiritual Gifts Survey
+            Spiritual Gifts Assessment
           </button>
 
           <a
@@ -123,7 +123,7 @@ export default function Layout({
             onClick={() => handleNav('survey')}
             className="hidden lg:inline-flex px-6 py-2.5 bg-brand-red text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-full hover:bg-brand-red-hover transition-all shadow-md shadow-brand-red/20"
           >
-            Begin Survey
+            Begin Assessment
           </button>
 
           <button
@@ -150,7 +150,7 @@ export default function Layout({
             onClick={() => handleNav('survey')}
             className={`block w-full text-left py-2.5 ${activeView === 'survey' ? 'text-brand-red' : 'text-brand-text'}`}
           >
-            Spiritual Gifts Survey
+            Spiritual Gifts Assessment
           </button>
 
           <a
@@ -200,7 +200,7 @@ export default function Layout({
               </li>
               <li>
                 <button onClick={() => handleNav('survey')} className="hover:text-white transition-colors">
-                  Spiritual Gifts Survey
+                  Spiritual Gifts Assessment
                 </button>
               </li>
               <li>

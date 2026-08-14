@@ -578,7 +578,7 @@ export default function App() {
               <div className="flex justify-between items-end mb-6">
                 <div>
                   <span className="text-[10px] font-bold text-brand-accent-gold uppercase tracking-[0.2em]">Discovery in progress</span>
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-text mt-2">The Sanctuary Survey</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-text mt-2">Spiritual Gifts Assessment</h2>
                 </div>
                 <span className="text-[10px] font-bold text-brand-muted uppercase tracking-widest">{Math.round(progress)}%</span>
               </div>
@@ -681,7 +681,7 @@ export default function App() {
             <div className="flex flex-col lg:flex-row gap-16">
               {/* Results Main Section */}
               <div className="flex-1">
-                <span className="text-[11px] font-bold text-brand-red uppercase tracking-[0.3em] mb-6 block">Survey Complete</span>
+                <span className="text-[11px] font-bold text-brand-red uppercase tracking-[0.3em] mb-6 block">Assessment Complete</span>
                 <h2 className="text-5xl sm:text-6xl font-serif italic mb-8 leading-tight">Welcome to your <br/>ministry, {userInfo.name}.</h2>
                 
                 <div className="space-y-12 max-w-2xl">
@@ -814,7 +814,7 @@ export default function App() {
                       onClick={resetSurvey}
                       className="block w-full py-4 border border-brand-border bg-white text-brand-text text-center text-[10px] uppercase tracking-[0.2em] font-bold rounded-full hover:bg-brand-surface transition-all"
                     >
-                      Retake Survey
+                      Retake Assessment
                     </button>
                   </div>
 

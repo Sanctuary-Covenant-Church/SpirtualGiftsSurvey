@@ -69,8 +69,8 @@ import { Gift, Question, EmailServerStatus } from '../types';
 import { INITIAL_GIFTS, INITIAL_QUESTIONS } from '../constants';
 import { 
   subscribeSurveyVersion, 
-  incrementMajorVersionQuestionChange, 
-  incrementMinorVersionGiftChange, 
+  incrementMajorVersionStructuralChange, 
+  incrementMinorVersionContentChange, 
   SurveyVersionInfo, 
   DEFAULT_SURVEY_VERSION 
 } from '../utils/surveyVersion';
@@ -575,7 +575,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       list = list.filter(item => {
         const name = (item.name || item.userName || '').toLowerCase();
         const email = (item.email || item.userEmail || '').toLowerCase();
-        const versionStr = (item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v5.0').toLowerCase();
+        const versionStr = (item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v1.0').toLowerCase();
 
         // Also search top gift names
         let giftText = '';
@@ -620,8 +620,8 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         aVal = new Date(a.timestamp || 0).getTime();
         bVal = new Date(b.timestamp || 0).getTime();
       } else if (responseSortField === 'version') {
-        aVal = (a.surveyVersion || a.version || a.assessmentVersion || a.assessmentType || 'v5.0').toLowerCase();
-        bVal = (b.surveyVersion || b.version || b.assessmentVersion || b.assessmentType || 'v5.0').toLowerCase();
+        aVal = (a.surveyVersion || a.version || a.assessmentVersion || a.assessmentType || 'v1.0').toLowerCase();
+        bVal = (b.surveyVersion || b.version || b.assessmentVersion || b.assessmentType || 'v1.0').toLowerCase();
       } else if (responseSortField === 'topGift') {
         aVal = (a.topGifts?.[0]?.name || a.primaryGiftIds?.[0] || '').toLowerCase();
         bVal = (b.topGifts?.[0]?.name || b.primaryGiftIds?.[0] || '').toLowerCase();
@@ -774,7 +774,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     const headers = ['Completed On', 'Survey Version', 'Top Gift #1 (Score)', 'Top Gift #2 (Score)', 'Top Gift #3 (Score)'];
     const rows = processedSurveyResponses.map(item => {
       const ts = item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A';
-      const versionStr = item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v5.0';
+      const versionStr = item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v1.0';
       const top3 = getNormalizedTop3Gifts(item);
 
       const getGiftStr = (gIdx: number) => {
@@ -1291,8 +1291,8 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
     setQuestions(updated);
 
-    // Auto-increment Major Survey Version on Question change
-    await incrementMajorVersionQuestionChange();
+    // Auto-increment Minor Survey Version on Question reorder (content change)
+    await incrementMinorVersionContentChange();
 
     if (!isFirebaseConfigured) {
       localStorage.setItem('sanctuary_questions', JSON.stringify(updated));
@@ -1315,8 +1315,8 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     const updated = sortedQuestions.map((q, i) => ({ ...q, order: i + 1 }));
     setQuestions(updated);
 
-    // Auto-increment Major Survey Version on Question change
-    await incrementMajorVersionQuestionChange();
+    // Auto-increment Minor Survey Version on Question renumbering (content change)
+    await incrementMinorVersionContentChange();
 
     if (!isFirebaseConfigured) {
       localStorage.setItem('sanctuary_questions', JSON.stringify(updated));
@@ -1340,7 +1340,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     if (!gift.id) return;
 
     // Auto-increment Minor Survey Version on Gift change
-    await incrementMinorVersionGiftChange();
+    await incrementMinorVersionContentChange();
 
     if (!isFirebaseConfigured) {
       const updatedGifts = gifts.map(g => g.id === gift.id ? { ...g, ...gift } as Gift : g);
@@ -1364,7 +1364,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     if (!confirm('Are you sure? This will not delete questions mapped to this gift.')) return;
 
     // Auto-increment Minor Survey Version on Gift change
-    await incrementMinorVersionGiftChange();
+    await incrementMinorVersionContentChange();
 
     if (!isFirebaseConfigured) {
       const updatedGifts = gifts.filter(g => g.id !== id);
@@ -1442,8 +1442,13 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       order: targetOrder
     };
 
-    // Auto-increment Major Survey Version on Question change
-    await incrementMajorVersionQuestionChange();
+    // Auto-increment version according to Option 4 (Major on new question, Minor on edit)
+    const isNewQuestion = !questions.some(qu => qu.id === id);
+    if (isNewQuestion) {
+      await incrementMajorVersionStructuralChange();
+    } else {
+      await incrementMinorVersionContentChange();
+    }
 
     if (!isFirebaseConfigured) {
       let updatedQuestions = questions.map(qu => qu.id === id ? questionToSave : qu);
@@ -1467,8 +1472,8 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
   const deleteQuestion = async (id: string) => {
     if (!confirm('Delete this question?')) return;
 
-    // Auto-increment Major Survey Version on Question change
-    await incrementMajorVersionQuestionChange();
+    // Auto-increment Major Survey Version on Question deletion (structural change)
+    await incrementMajorVersionStructuralChange();
 
     if (!isFirebaseConfigured) {
       const updatedQuestions = questions.filter(qu => qu.id !== id);
@@ -1519,7 +1524,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             onClick={() => { setActiveTab('questions'); setMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${activeTab === 'questions' ? 'bg-brand-surface text-brand-text' : 'text-brand-muted hover:bg-brand-bg'}`}
           >
-            <Settings className="w-4 h-4" /> Survey Questions
+            <Settings className="w-4 h-4" /> Assessment Questions
           </button>
           <button 
             onClick={() => { setActiveTab('analytics'); setMobileMenuOpen(false); }}
@@ -1607,7 +1612,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             </button>
             <span className="text-xs font-bold uppercase tracking-wider text-brand-text truncate">
               {activeTab === 'gifts' && 'Spiritual Gifts'}
-              {activeTab === 'questions' && 'Survey Questions'}
+              {activeTab === 'questions' && 'Assessment Questions'}
               {activeTab === 'analytics' && 'Analytics'}
               {activeTab === 'emails' && 'Email Config'}
               {activeTab === 'logs' && 'Error Logs'}
@@ -1628,7 +1633,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-text">
                 {activeTab === 'gifts' && 'Spiritual Gifts Library'}
-                {activeTab === 'questions' && 'Survey Question Pool'}
+                {activeTab === 'questions' && 'Assessment Question Pool'}
                 {activeTab === 'analytics' && 'Operational Insights'}
                 {activeTab === 'emails' && 'Email Notifications'}
                 {activeTab === 'logs' && 'System Error Logs'}
@@ -1640,7 +1645,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                 <div className="relative group inline-flex items-center gap-2 px-3 py-1.5 bg-brand-surface rounded-2xl border border-brand-border/90 cursor-help transition-all hover:border-brand-text/40 shadow-2xs">
                   <Tag className="w-3.5 h-3.5 text-brand-red shrink-0" />
                   <span className="font-mono text-xs font-bold text-brand-text">
-                    Survey Version: {surveyVersionInfo.versionStr}
+                    Assessment Version: {surveyVersionInfo.versionStr}
                   </span>
                   <HelpCircle className="w-3.5 h-3.5 text-brand-muted group-hover:text-brand-text transition-colors shrink-0" />
 
@@ -1649,7 +1654,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     <div className="font-bold flex items-center justify-between border-b border-white/15 pb-2">
                       <div className="flex items-center gap-2">
                         <Tag className="w-3.5 h-3.5 text-brand-accent-gold" />
-                        <span>Survey Versioning</span>
+                        <span>Assessment Versioning</span>
                       </div>
                       <span className="font-mono text-[10px] text-brand-accent-gold bg-white/10 px-2 py-0.5 rounded-md font-bold">
                         {surveyVersionInfo.versionStr}
@@ -1657,15 +1662,15 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     </div>
                     <div className="space-y-2 text-[11px] leading-relaxed text-slate-200 font-normal">
                       <p>
-                        <strong className="text-white font-bold">Major Version ({surveyVersionInfo.major}):</strong> Increments automatically when survey questions are created, edited, reordered, or deleted.
+                        <strong className="text-white font-bold">Major Version ({surveyVersionInfo.major}):</strong> Increments automatically on structural changes (adding or deleting assessment questions).
                       </p>
                       <p>
-                        <strong className="text-white font-bold">Minor Version ({surveyVersionInfo.minor}):</strong> Increments automatically when spiritual gifts or their metadata are created, edited, or deleted.
+                        <strong className="text-white font-bold">Minor Version ({surveyVersionInfo.minor}):</strong> Increments automatically on content/order changes (editing question text, reordering, or updating spiritual gifts).
                       </p>
                     </div>
                     <div className="pt-2 text-[10px] text-brand-muted font-mono flex items-center justify-between border-t border-white/10">
                       <span>Stored in Firestore: settings/survey</span>
-                      <span>Auto-incremented</span>
+                      <span>Structural Auto-Batching</span>
                     </div>
                   </div>
                 </div>
@@ -2059,7 +2064,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         {activeTab === 'questions' && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-xs text-brand-muted">
-              <span>Use the <strong className="text-brand-text">Up (↑)</strong> and <strong className="text-brand-text">Down (↓)</strong> buttons to easily reorder questions. Survey takers will encounter questions in this exact order.</span>
+              <span>Use the <strong className="text-brand-text">Up (↑)</strong> and <strong className="text-brand-text">Down (↓)</strong> buttons to easily reorder questions. Assessment takers will encounter questions in this exact order.</span>
               <span className="font-mono text-[10px] font-bold text-brand-accent-sage uppercase shrink-0">{sortedQuestions.length} Questions Configured</span>
             </div>
             <div className="bg-white border border-brand-border rounded-2xl sm:rounded-[2rem] overflow-x-auto shadow-sm">
@@ -2145,9 +2150,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
                   <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700 font-mono">Live Firestore Tracking</span>
                 </div>
-                <h3 className="text-xl sm:text-2xl font-bold text-brand-text">Survey Engagement & Conversion Analytics</h3>
+                <h3 className="text-xl sm:text-2xl font-bold text-brand-text">Assessment Engagement & Conversion Analytics</h3>
                 <p className="text-xs text-brand-muted mt-1 leading-relaxed">
-                  Real-time statistics on survey completion rates, direct vs post-survey CTA clicks, and spiritual gift interest distribution.
+                  Real-time statistics on assessment completion rates, direct vs post-assessment CTA clicks, and spiritual gift interest distribution.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
@@ -2184,10 +2189,10 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
             {/* KPI Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Card 1: Survey Starts & Completes */}
+              {/* Card 1: Assessment Starts & Completes */}
               <div className="p-6 bg-white border border-brand-border rounded-2xl sm:rounded-[2rem] shadow-2xs space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Survey Activity</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Assessment Activity</span>
                   <span className="p-2 bg-brand-red/10 text-brand-red rounded-xl">
                     <CheckCircle2 className="w-4 h-4" />
                   </span>
@@ -2195,7 +2200,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                 <div>
                   <div className="text-3xl font-bold text-brand-text">{analyticsMetrics.totalCompletes}</div>
                   <div className="text-[11px] text-brand-muted mt-1">
-                    Completed Surveys out of <strong className="text-brand-text">{analyticsMetrics.totalStarts}</strong> starts
+                    Completed Assessments out of <strong className="text-brand-text">{analyticsMetrics.totalStarts}</strong> starts
                   </div>
                 </div>
                 <div className="pt-2 border-t border-brand-border/60">
@@ -2228,14 +2233,14 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                 </div>
                 <div className="pt-2 border-t border-brand-border/60 text-[10px] text-brand-muted flex justify-between">
                   <span>Direct: <strong className="text-brand-text font-bold">{analyticsMetrics.directCtaClicks}</strong></span>
-                  <span>Post-Survey: <strong className="text-brand-text font-bold">{analyticsMetrics.postSurveyCtaClicks}</strong></span>
+                  <span>Post-Assessment: <strong className="text-brand-text font-bold">{analyticsMetrics.postSurveyCtaClicks}</strong></span>
                 </div>
               </div>
 
-              {/* Card 3: Post-Survey Join Conversion Rate */}
+              {/* Card 3: Post-Assessment Join Conversion Rate */}
               <div className="p-6 bg-white border border-brand-border rounded-2xl sm:rounded-[2rem] shadow-2xs space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Post-Survey Conversion</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Post-Assessment Conversion</span>
                   <span className="p-2 bg-brand-accent-sage/10 text-brand-accent-sage rounded-xl">
                     <TrendingUp className="w-4 h-4" />
                   </span>
@@ -2243,7 +2248,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                 <div>
                   <div className="text-3xl font-bold text-brand-accent-sage">{analyticsMetrics.postSurveyJoinRate}%</div>
                   <div className="text-[11px] text-brand-muted mt-1">
-                    Survey completers who clicked <strong className="text-brand-text">Join a Team</strong>
+                    Assessment completers who clicked <strong className="text-brand-text">Join a Team</strong>
                   </div>
                 </div>
                 <div className="pt-2 border-t border-brand-border/60 text-[10px] font-mono text-brand-muted">
@@ -2251,7 +2256,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                 </div>
               </div>
 
-              {/* Card 4: Direct vs Post-Survey Ratio */}
+              {/* Card 4: Direct vs Post-Assessment Ratio */}
               <div className="p-6 bg-white border border-brand-border rounded-2xl sm:rounded-[2rem] shadow-2xs space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Entry Behavior</span>
@@ -2261,14 +2266,14 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-brand-text">
-                    {analyticsMetrics.directCtaClicks} <span className="text-xs font-normal text-brand-muted">Direct</span> / {analyticsMetrics.postSurveyCtaClicks} <span className="text-xs font-normal text-brand-muted">Post-Survey</span>
+                    {analyticsMetrics.directCtaClicks} <span className="text-xs font-normal text-brand-muted">Direct</span> / {analyticsMetrics.postSurveyCtaClicks} <span className="text-xs font-normal text-brand-muted">Post-Assessment</span>
                   </div>
                   <div className="text-[11px] text-brand-muted mt-1">
-                    Direct team signups vs survey-guided signups
+                    Direct team signups vs assessment-guided signups
                   </div>
                 </div>
                 <div className="pt-2 border-t border-brand-border/60 text-[10px] text-brand-muted font-light">
-                  Survey adds clarity before ministry team selection
+                  Assessment adds clarity before ministry team selection
                 </div>
               </div>
             </div>
@@ -2277,7 +2282,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             <div className="bg-white border border-brand-border rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-8 shadow-xs">
               <h4 className="text-xs font-bold uppercase tracking-[0.22em] text-brand-red mb-2">Participant Journey & Conversion Funnel</h4>
               <p className="text-xs text-brand-muted leading-relaxed mb-6">
-                Tracking how participants move from initial landing to taking the survey and joining a ministry team.
+                Tracking how participants move from initial landing to taking the assessment and joining a ministry team.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 relative">
@@ -2290,26 +2295,26 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
 
                 {/* Step 2 */}
                 <div className="p-5 bg-brand-surface/60 rounded-2xl border border-brand-border text-center space-y-2">
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 2 • Started Survey</span>
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 2 • Started Assessment</span>
                   <div className="text-2xl font-bold text-brand-text">{analyticsMetrics.totalStarts}</div>
                   <p className="text-[10px] text-brand-muted font-light">Began answering spiritual gift questions</p>
                 </div>
 
                 {/* Step 3 */}
                 <div className="p-5 bg-brand-surface/60 rounded-2xl border border-brand-border text-center space-y-2">
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 3 • Completed Survey</span>
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 3 • Completed Assessment</span>
                   <div className="text-2xl font-bold text-brand-red">{analyticsMetrics.totalCompletes}</div>
                   <p className="text-[10px] text-brand-muted font-light">
-                    {analyticsMetrics.completionRate}% completion rate from survey starts
+                    {analyticsMetrics.completionRate}% completion rate from assessment starts
                   </p>
                 </div>
 
                 {/* Step 4 */}
                 <div className="p-5 bg-brand-surface/60 rounded-2xl border border-brand-border text-center space-y-2">
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 4 • Joined Team Post-Survey</span>
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-brand-muted block">Step 4 • Joined Team Post-Assessment</span>
                   <div className="text-2xl font-bold text-brand-accent-sage">{analyticsMetrics.postSurveyCtaClicks}</div>
                   <p className="text-[10px] text-brand-muted font-light">
-                    {analyticsMetrics.postSurveyJoinRate}% conversion rate from completed surveys
+                    {analyticsMetrics.postSurveyJoinRate}% conversion rate from completed assessments
                   </p>
                 </div>
               </div>
@@ -2335,7 +2340,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                       <PieChart className="w-8 h-8 text-brand-muted mx-auto opacity-40" />
                       <p className="text-xs font-semibold text-brand-text">No CTA clicks recorded with spiritual gift metadata yet.</p>
                       <p className="text-[11px] text-brand-muted max-w-xs mx-auto leading-relaxed">
-                        When survey completers click "Join a Team" on their results page, their primary spiritual gift will be logged and analyzed here!
+                        When assessment completers click "Join a Team" on their results page, their primary spiritual gift will be logged and analyzed here!
                       </p>
                     </div>
                   ) : (
@@ -2380,15 +2385,15 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     </span>
                   </div>
                   <p className="text-xs text-brand-muted leading-relaxed mb-6 font-light">
-                    The most common primary spiritual gifts identified across all completed survey respondents in Sanctuary Church.
+                    The most common primary spiritual gifts identified across all completed assessment respondents in Sanctuary Church.
                   </p>
 
                   {analyticsMetrics.overallGiftsList.length === 0 ? (
                     <div className="p-8 text-center bg-brand-surface/30 rounded-2xl border border-dashed border-brand-border space-y-3">
                       <BarChart3 className="w-8 h-8 text-brand-muted mx-auto opacity-40" />
-                      <p className="text-xs font-semibold text-brand-text">No survey responses recorded yet.</p>
+                      <p className="text-xs font-semibold text-brand-text">No assessment responses recorded yet.</p>
                       <p className="text-[11px] text-brand-muted max-w-xs mx-auto leading-relaxed">
-                        Complete the survey to see primary gift distributions appear in real-time.
+                        Complete the assessment to see primary gift distributions appear in real-time.
                       </p>
                     </div>
                   ) : (
@@ -2469,11 +2474,11 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                   <div className="flex items-center gap-2 mb-1">
                     <Users className="w-4 h-4 text-brand-red" />
                     <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-text">
-                      Survey Completion Records ({processedSurveyResponses.length})
+                      Assessment Completion Records ({processedSurveyResponses.length})
                     </h4>
                   </div>
                   <p className="text-xs text-brand-muted font-light">
-                    Detailed list of individual survey completions, user IDs, timestamp, and top 3 gift matches.
+                    Detailed list of individual assessment completions, user IDs, timestamp, and top 3 gift matches.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -2481,7 +2486,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     onClick={handleExportResponsesCSV}
                     disabled={processedSurveyResponses.length === 0}
                     className="px-4 py-2.5 bg-brand-surface border border-brand-border hover:bg-white text-brand-text text-[10px] font-bold uppercase tracking-[0.15em] rounded-xl transition-all flex items-center gap-2 shrink-0 disabled:opacity-40 cursor-pointer"
-                    title="Export currently filtered survey responses to CSV"
+                    title="Export currently filtered assessment responses to CSV"
                   >
                     <Download className="w-3.5 h-3.5 text-brand-muted" />
                     Export CSV
@@ -2498,7 +2503,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     type="text"
                     value={responseSearch}
                     onChange={e => setResponseSearch(e.target.value)}
-                    placeholder="Search by spiritual gift match, survey version, or date..."
+                    placeholder="Search by spiritual gift match, assessment version, or date..."
                     className="w-full pl-10 pr-8 py-2.5 bg-brand-surface/60 border border-brand-border rounded-xl text-xs outline-none focus:border-brand-text transition-all"
                   />
                   {responseSearch && (
@@ -2549,11 +2554,11 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                   <User className="w-8 h-8 text-brand-muted mx-auto opacity-30" />
                   <div className="space-y-1">
                     <p className="text-xs font-semibold text-brand-text">
-                      {surveyResultsList.length === 0 ? "No survey completions recorded yet." : "No survey responses match your search or filter."}
+                      {surveyResultsList.length === 0 ? "No assessment completions recorded yet." : "No assessment responses match your search or filter."}
                     </p>
                     <p className="text-[11px] text-brand-muted">
                       {surveyResultsList.length === 0 
-                        ? "Completed surveys submitted by users will appear here automatically in real time." 
+                        ? "Completed assessments submitted by users will appear here automatically in real time." 
                         : "Try clearing the search query or selecting 'All Spiritual Gifts'."}
                     </p>
                   </div>
@@ -2591,7 +2596,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                         >
                           <div className="flex items-center gap-1.5">
                             <Tag className="w-3.5 h-3.5" />
-                            <span>Survey Version</span>
+                            <span>Assessment Version</span>
                             <ArrowUpDown className="w-3 h-3 text-brand-muted opacity-60" />
                           </div>
                         </th>
@@ -2620,7 +2625,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                           timeStyle: 'short'
                         }) : 'N/A';
 
-                        const versionStr = item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v5.0';
+                        const versionStr = item.surveyVersion || item.version || item.assessmentVersion || item.assessmentType || 'v1.0';
                         const top3 = getNormalizedTop3Gifts(item);
 
                         return (
@@ -2689,7 +2694,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     <span className="font-bold text-brand-text">
                       {Math.min(responseCurrentPage * responseRowsPerPage, processedSurveyResponses.length)}
                     </span>{' '}
-                    of <span className="font-bold text-brand-text">{processedSurveyResponses.length}</span> survey responses
+                    of <span className="font-bold text-brand-text">{processedSurveyResponses.length}</span> assessment responses
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -2731,9 +2736,9 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                     <span className="w-2.5 h-2.5 rounded-full bg-brand-red inline-block animate-pulse"></span>
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-red">Automated Delivery System</span>
                   </div>
-                  <h3 className="text-lg sm:text-xl font-bold text-brand-text">Survey Results Routing</h3>
+                  <h3 className="text-lg sm:text-xl font-bold text-brand-text">Assessment Results Routing</h3>
                   <p className="text-xs text-brand-muted mt-1 leading-relaxed">
-                    Whenever a participant completes the Soul Discovery survey, a full report (Top 5 Gifts & Top 5 Ministry Matches) is emailed to the participant and all notification addresses below.
+                    Whenever a participant completes the Soul Discovery assessment, a full report (Top 5 Gifts & Ministry Team Matches) is emailed to the participant and all notification addresses below.
                   </p>
                 </div>
                 <div className="p-4 bg-brand-surface rounded-2xl border border-brand-border shrink-0 w-full sm:w-auto min-w-0 sm:min-w-[200px]">
@@ -2748,7 +2753,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
                   <div>
                     <h4 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-brand-text">Configured Recipient Email Addresses</h4>
-                    <p className="text-xs text-brand-muted mt-0.5">These staff / ministry leader addresses receive a copy of every completed survey.</p>
+                    <p className="text-xs text-brand-muted mt-0.5">These staff / ministry leader addresses receive a copy of every completed assessment.</p>
                   </div>
                   <button
                     onClick={handleSaveRecipients}
@@ -2822,7 +2827,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             <div className="bg-white border border-brand-border rounded-2xl sm:rounded-[2.5rem] p-5 sm:p-8 shadow-xs">
               <h3 className="text-base sm:text-lg font-bold text-brand-text mb-2">Test Email Generator</h3>
               <p className="text-xs text-brand-muted mb-6 leading-relaxed">
-                Send a sample Top 5 Gifts & Top 5 Ministry Matches report to verify email delivery.
+                Send a sample Top 5 Gifts & Ministry Team Matches report to verify email delivery.
               </p>
               <form onSubmit={handleSendTestEmail} className="flex flex-col sm:flex-row gap-3">
                 <input
@@ -3422,7 +3427,7 @@ EMAIL_FROM="Sanctuary Covenant Church <no-reply@sanctuarycov.org>"`}
                   </span>
                   <span className="bg-brand-surface px-2.5 py-1 rounded-lg border border-brand-border/80 font-mono text-[11px] flex items-center gap-1.5 text-brand-text font-bold">
                     <Tag className="w-3 h-3 text-brand-muted" />
-                    Version: {selectedScoresResponse.surveyVersion || selectedScoresResponse.version || selectedScoresResponse.assessmentVersion || selectedScoresResponse.assessmentType || 'v5.0'}
+                    Version: {selectedScoresResponse.surveyVersion || selectedScoresResponse.version || selectedScoresResponse.assessmentVersion || selectedScoresResponse.assessmentType || 'v1.0'}
                   </span>
                 </div>
               </div>

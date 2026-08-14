@@ -96,7 +96,7 @@ export default function Sanctuary5Hero({ onStartSurvey }: Sanctuary5HeroProps) {
           onClick={onStartSurvey}
           className="w-full sm:w-auto px-10 py-4.5 bg-brand-red text-white rounded-full text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-red-hover transition-all shadow-lg shadow-brand-red/20 flex items-center justify-center gap-2 group cursor-pointer"
         >
-          <span>Begin Spiritual Gifts Survey</span>
+          <span>Begin Spiritual Gifts Assessment</span>
           <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
         <a

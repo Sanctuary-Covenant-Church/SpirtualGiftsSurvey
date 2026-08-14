@@ -11,7 +11,7 @@ describe('Core User Journeys (Non-Admin)', () => {
     expect(screen.getByText(/Discover How God Wired You/i)).toBeInTheDocument();
     
     // Find CTA button to start survey
-    const startButtons = screen.getAllByRole('button', { name: /Begin Spiritual Gifts Survey/i });
+    const startButtons = screen.getAllByRole('button', { name: /Begin Spiritual Gifts Assessment/i });
     expect(startButtons.length).toBeGreaterThan(0);
 
     // Click start survey
@@ -19,7 +19,7 @@ describe('Core User Journeys (Non-Admin)', () => {
 
     // Verify view navigated to Survey Questionnaire
     await waitFor(() => {
-      expect(screen.getByText(/The Sanctuary Survey/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Spiritual Gifts Assessment/i })).toBeInTheDocument();
     });
   });
 
@@ -27,11 +27,11 @@ describe('Core User Journeys (Non-Admin)', () => {
     render(<App />);
 
     // Start Survey
-    const startButtons = screen.getAllByRole('button', { name: /Begin Spiritual Gifts Survey/i });
+    const startButtons = screen.getAllByRole('button', { name: /Begin Spiritual Gifts Assessment/i });
     fireEvent.click(startButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText(/The Sanctuary Survey/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Spiritual Gifts Assessment/i })).toBeInTheDocument();
     });
 
     // Select response score '5' for Question 1
@@ -45,7 +45,7 @@ describe('Core User Journeys (Non-Admin)', () => {
     fireEvent.click(prevButton);
 
     // Verify still on survey view
-    expect(screen.getByText(/The Sanctuary Survey/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Spiritual Gifts Assessment/i })).toBeInTheDocument();
   });
 
   it('Journey 3: Header Navigation -> Switch between Home and Survey View', async () => {
@@ -56,14 +56,14 @@ describe('Core User Journeys (Non-Admin)', () => {
     expect(homeNavButtons.length).toBeGreaterThan(0);
 
     // Header Survey link
-    const surveyNavButtons = screen.getAllByRole('button', { name: /Spiritual Gifts Survey/i });
+    const surveyNavButtons = screen.getAllByRole('button', { name: /Spiritual Gifts Assessment/i });
     expect(surveyNavButtons.length).toBeGreaterThan(0);
 
     // Click Survey link
     fireEvent.click(surveyNavButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText(/The Sanctuary Survey/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Spiritual Gifts Assessment/i })).toBeInTheDocument();
     });
 
     // Click Discovery Home link to return to landing hero
@@ -78,11 +78,11 @@ describe('Core User Journeys (Non-Admin)', () => {
     render(<App />);
 
     // Navigate to Survey
-    const startButtons = screen.getAllByRole('button', { name: /Begin Spiritual Gifts Survey/i });
+    const startButtons = screen.getAllByRole('button', { name: /Begin Spiritual Gifts Assessment/i });
     fireEvent.click(startButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText(/The Sanctuary Survey/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Spiritual Gifts Assessment/i })).toBeInTheDocument();
     });
 
     // Complete all questions loop
@@ -116,7 +116,7 @@ describe('Core User Journeys (Non-Admin)', () => {
     });
 
     // Look for Retake Survey button
-    const retakeButton = screen.getByRole('button', { name: /Retake Survey/i });
+    const retakeButton = screen.getByRole('button', { name: /Retake Assessment/i });
     expect(retakeButton).toBeInTheDocument();
 
     // Click Retake Survey

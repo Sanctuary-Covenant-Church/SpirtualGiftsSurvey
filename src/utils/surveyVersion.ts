@@ -9,29 +9,31 @@ import { db, isFirebaseConfigured } from '../lib/firebase';
 export interface SurveyVersionInfo {
   major: number;
   minor: number;
-  versionStr: string; // e.g., 'v5.0'
+  versionStr: string; // e.g., 'v1.0'
   updatedAt: string;
-  lastChangeType?: 'question' | 'gift' | 'initial';
+  lastChangeType?: 'question_structural' | 'question_content' | 'gift' | 'initial';
+  v1ResetDone?: boolean;
 }
 
 export const DEFAULT_SURVEY_VERSION: SurveyVersionInfo = {
-  major: 5,
+  major: 1,
   minor: 0,
-  versionStr: 'v5.0',
+  versionStr: 'v1.0',
   updatedAt: new Date().toISOString(),
-  lastChangeType: 'initial'
+  lastChangeType: 'initial',
+  v1ResetDone: true
 };
 
 const LOCAL_STORAGE_KEY = 'sanctuary_survey_version';
 
 export function parseVersionString(verStr: string): { major: number; minor: number } {
-  if (!verStr) return { major: 5, minor: 0 };
+  if (!verStr) return { major: 1, minor: 0 };
   const clean = verStr.replace(/^v/i, '').trim();
   const parts = clean.split('.');
   const major = parseInt(parts[0], 10);
   const minor = parseInt(parts[1], 10);
   return {
-    major: isNaN(major) ? 5 : major,
+    major: isNaN(major) ? 1 : major,
     minor: isNaN(minor) ? 0 : minor
   };
 }
@@ -46,12 +48,17 @@ export function getLocalSurveyVersion(): SurveyVersionInfo {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.major === 'number' && typeof parsed.minor === 'number') {
+        if (!parsed.v1ResetDone || parsed.major >= 5) {
+          saveLocalSurveyVersion(DEFAULT_SURVEY_VERSION);
+          return DEFAULT_SURVEY_VERSION;
+        }
         return {
           major: parsed.major,
           minor: parsed.minor,
           versionStr: parsed.versionStr || formatVersionString(parsed.major, parsed.minor),
           updatedAt: parsed.updatedAt || new Date().toISOString(),
-          lastChangeType: parsed.lastChangeType || 'initial'
+          lastChangeType: parsed.lastChangeType || 'initial',
+          v1ResetDone: true
         };
       }
     }
@@ -76,10 +83,17 @@ export async function fetchCurrentSurveyVersion(): Promise<SurveyVersionInfo> {
       const docSnap = await getDoc(surveyDocRef);
       if (docSnap.exists()) {
         const data = docSnap.data();
+        if (!data.v1ResetDone || data.major >= 5) {
+          // Reset to v1.0 baseline for fresh start
+          await setDoc(surveyDocRef, DEFAULT_SURVEY_VERSION);
+          saveLocalSurveyVersion(DEFAULT_SURVEY_VERSION);
+          return DEFAULT_SURVEY_VERSION;
+        }
+
         let major = data.major;
         let minor = data.minor;
         if (typeof major !== 'number' || typeof minor !== 'number') {
-          const parsed = parseVersionString(data.versionStr || data.surveyVersion || 'v5.0');
+          const parsed = parseVersionString(data.versionStr || data.surveyVersion || 'v1.0');
           major = parsed.major;
           minor = parsed.minor;
         }
@@ -88,7 +102,8 @@ export async function fetchCurrentSurveyVersion(): Promise<SurveyVersionInfo> {
           minor,
           versionStr: formatVersionString(major, minor),
           updatedAt: data.updatedAt || new Date().toISOString(),
-          lastChangeType: data.lastChangeType || 'initial'
+          lastChangeType: data.lastChangeType || 'initial',
+          v1ResetDone: true
         };
         saveLocalSurveyVersion(versionInfo);
         return versionInfo;
@@ -105,9 +120,9 @@ export async function fetchCurrentSurveyVersion(): Promise<SurveyVersionInfo> {
 }
 
 /**
- * Automatically increments Major version when Questions change (vX.Y -> v(X+1).0)
+ * Option 4 - Structural Change (Add/Delete Questions): Increments Major version (vX.Y -> v(X+1).0)
  */
-export async function incrementMajorVersionQuestionChange(): Promise<SurveyVersionInfo> {
+export async function incrementMajorVersionStructuralChange(): Promise<SurveyVersionInfo> {
   const current = await fetchCurrentSurveyVersion();
   const newMajor = current.major + 1;
   const newMinor = 0;
@@ -116,7 +131,8 @@ export async function incrementMajorVersionQuestionChange(): Promise<SurveyVersi
     minor: newMinor,
     versionStr: formatVersionString(newMajor, newMinor),
     updatedAt: new Date().toISOString(),
-    lastChangeType: 'question'
+    lastChangeType: 'question_structural',
+    v1ResetDone: true
   };
 
   saveLocalSurveyVersion(updatedInfo);
@@ -133,9 +149,9 @@ export async function incrementMajorVersionQuestionChange(): Promise<SurveyVersi
 }
 
 /**
- * Automatically increments Minor version when Gifts change (vX.Y -> vX.(Y+1))
+ * Option 4 - Minor Content Change (Edit question text, reorder questions, or update gifts): Increments Minor version (vX.Y -> vX.(Y+1))
  */
-export async function incrementMinorVersionGiftChange(): Promise<SurveyVersionInfo> {
+export async function incrementMinorVersionContentChange(): Promise<SurveyVersionInfo> {
   const current = await fetchCurrentSurveyVersion();
   const newMajor = current.major;
   const newMinor = current.minor + 1;
@@ -144,7 +160,8 @@ export async function incrementMinorVersionGiftChange(): Promise<SurveyVersionIn
     minor: newMinor,
     versionStr: formatVersionString(newMajor, newMinor),
     updatedAt: new Date().toISOString(),
-    lastChangeType: 'gift'
+    lastChangeType: 'question_content',
+    v1ResetDone: true
   };
 
   saveLocalSurveyVersion(updatedInfo);
@@ -160,6 +177,10 @@ export async function incrementMinorVersionGiftChange(): Promise<SurveyVersionIn
   return updatedInfo;
 }
 
+// Aliases for backward compatibility
+export const incrementMajorVersionQuestionChange = incrementMajorVersionStructuralChange;
+export const incrementMinorVersionGiftChange = incrementMinorVersionContentChange;
+
 export function subscribeSurveyVersion(callback: (info: SurveyVersionInfo) => void) {
   callback(getLocalSurveyVersion());
 
@@ -170,10 +191,15 @@ export function subscribeSurveyVersion(callback: (info: SurveyVersionInfo) => vo
   const unsub = onSnapshot(doc(db, 'settings', 'survey'), (snapshot) => {
     if (snapshot.exists()) {
       const data = snapshot.data();
+      if (!data.v1ResetDone || data.major >= 5) {
+        setDoc(doc(db, 'settings', 'survey'), DEFAULT_SURVEY_VERSION).catch(() => {});
+        callback(DEFAULT_SURVEY_VERSION);
+        return;
+      }
       let major = data.major;
       let minor = data.minor;
       if (typeof major !== 'number' || typeof minor !== 'number') {
-        const parsed = parseVersionString(data.versionStr || data.surveyVersion || 'v5.0');
+        const parsed = parseVersionString(data.versionStr || data.surveyVersion || 'v1.0');
         major = parsed.major;
         minor = parsed.minor;
       }
@@ -182,7 +208,8 @@ export function subscribeSurveyVersion(callback: (info: SurveyVersionInfo) => vo
         minor,
         versionStr: formatVersionString(major, minor),
         updatedAt: data.updatedAt || new Date().toISOString(),
-        lastChangeType: data.lastChangeType || 'initial'
+        lastChangeType: data.lastChangeType || 'initial',
+        v1ResetDone: true
       };
       saveLocalSurveyVersion(versionInfo);
       callback(versionInfo);

@@ -44,16 +44,6 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
         <div style="font-size: 13px; color: #555350; margin-top: 6px; line-height: 1.5;">
           ${gift.description}
         </div>
-        ${gift.serviceTeams && gift.serviceTeams.length > 0 ? `
-          <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #EAE7E1;">
-            <div style="font-size: 10px; font-weight: bold; color: #D4AF37; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">
-              Ministry Team Options:
-            </div>
-            <div>
-              ${gift.serviceTeams.map(t => `<span style="display: inline-block; background-color: #F6F4F0; color: #1C1B1A; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-right: 4px; margin-bottom: 4px; border: 1px solid #DDD9D0;">${t}</span>`).join('')}
-            </div>
-          </div>
-        ` : ''}
       </td>
       <td style="padding: 14px 16px; vertical-align: top; text-align: right; width: 80px;">
         <span style="display: inline-block; background-color: #F6F4F0; color: #1C1B1A; font-weight: bold; font-size: 13px; padding: 4px 10px; border-radius: 12px; border: 1px solid #DDD9D0;">
@@ -83,7 +73,7 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
                 Sanctuary Covenant Church
               </div>
               <h1 style="color: #FFFFFF; font-family: Georgia, serif; font-size: 26px; font-style: italic; margin: 0; font-weight: normal;">
-                Soul Discovery • Spiritual Gifts Survey
+                Soul Discovery • Spiritual Gifts Assessment
               </h1>
             </td>
           </tr>
@@ -95,7 +85,7 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
                 <tr>
                   <td>
                     <div style="font-size: 11px; font-weight: bold; color: #8C232C; text-transform: uppercase; letter-spacing: 0.15em;">
-                      Survey Participant
+                      Assessment Participant
                     </div>
                     <div style="font-size: 20px; font-weight: bold; color: #1C1B1A; margin-top: 4px; font-family: Georgia, serif;">
                       ${name || 'Anonymous Participant'}
@@ -114,13 +104,38 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
 
           <!-- Top 5 Spiritual Gifts -->
           <tr>
-            <td style="padding: 32px 32px 32px 32px;">
-              <h2 style="font-family: Georgia, serif; font-size: 20px; italic: true; color: #1C1B1A; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #8C232C; padding-bottom: 8px; display: inline-block;">
+            <td style="padding: 32px 32px 24px 32px;">
+              <h2 style="font-family: Georgia, serif; font-size: 20px; font-style: italic; color: #1C1B1A; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #8C232C; padding-bottom: 8px; display: inline-block;">
                 Top 5 Spiritual Gifts
               </h2>
               <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; background-color: #FFFFFF;">
                 ${giftsHtml}
               </table>
+            </td>
+          </tr>
+
+          <!-- Ministry Team Matches Section -->
+          <tr>
+            <td style="padding: 0 32px 32px 32px;">
+              <h2 style="font-family: Georgia, serif; font-size: 20px; font-style: italic; color: #1C1B1A; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #8C232C; padding-bottom: 8px; display: inline-block;">
+                Ministry Team Matches
+              </h2>
+              ${topGifts.some(g => g.serviceTeams && g.serviceTeams.length > 0) ? `
+                <div style="background-color: #FFFFFF;">
+                  ${topGifts.filter(g => g.serviceTeams && g.serviceTeams.length > 0).map((gift) => `
+                    <div style="margin-bottom: 12px; padding: 14px 16px; background-color: #FAF8F5; border-radius: 12px; border: 1px solid #EAE7E1;">
+                      <div style="font-size: 14px; font-weight: bold; color: #8C232C; font-family: Georgia, serif; margin-bottom: 6px;">
+                        ${gift.name}
+                      </div>
+                      <div>
+                        ${gift.serviceTeams!.map(t => `<span style="display: inline-block; background-color: #FFFFFF; color: #1C1B1A; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; margin-right: 6px; margin-bottom: 6px; border: 1px solid #DDD9D0;">${t}</span>`).join('')}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : `
+                <div style="font-size: 13px; color: #8C8880; font-style: italic;">No specific ministry team matches found.</div>
+              `}
             </td>
           </tr>
 
