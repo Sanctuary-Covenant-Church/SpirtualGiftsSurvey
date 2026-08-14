@@ -22,6 +22,7 @@ export default defineConfig(({mode}) => {
       'process.env.VITE_FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || env.FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID),
       'process.env.VITE_FIREBASE_APP_ID': JSON.stringify(env.VITE_FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID || env.FIREBASE_APP_ID || process.env.FIREBASE_APP_ID),
       'process.env.VITE_FIREBASE_DATABASE_ID': JSON.stringify(env.VITE_FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID || env.FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID || '(default)'),
+      'process.env.VITE_BUILD_NUMBER': JSON.stringify(env.VITE_BUILD_NUMBER || process.env.VITE_BUILD_NUMBER || process.env.BUILD_NUMBER || process.env.BUILD_ID || process.env.DEPLOY_ID || (process.env.COMMIT_REF ? process.env.COMMIT_REF.slice(0, 7) : '') || ''),
     },
     resolve: {
       alias: {

@@ -1503,7 +1503,12 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
         <div className="p-6 border-b border-brand-border flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-[0.2em]">Curator Panel</h2>
-            <p className="text-[10px] text-brand-muted uppercase font-medium mt-1">Management Console</p>
+            <p className="text-[10px] text-brand-muted uppercase font-medium mt-0.5">Management Console</p>
+            <div className="mt-2">
+              <span className="inline-block text-[9px] font-mono text-brand-muted bg-brand-surface px-2 py-0.5 rounded-md border border-brand-border/80 font-bold tracking-wider">
+                BUILD {process.env.VITE_BUILD_NUMBER ? `#${process.env.VITE_BUILD_NUMBER}` : `#${surveyVersionInfo.versionStr}`}
+              </span>
+            </div>
           </div>
           <button
             onClick={() => setMobileMenuOpen(false)}
