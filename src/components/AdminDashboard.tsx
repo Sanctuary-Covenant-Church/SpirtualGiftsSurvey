@@ -1507,7 +1507,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
             <div className="mt-2 flex flex-col gap-0.5">
               <span 
                 className="inline-block text-[9px] font-mono text-brand-muted bg-brand-surface px-2 py-0.5 rounded-md border border-brand-border/80 font-bold tracking-wider w-fit"
-                title={process.env.VITE_BUILD_TIME ? `Built: ${process.env.VITE_BUILD_TIME}` : 'Local Development'}
+                title={`Built: ${process.env.VITE_BUILD_TIME || 'Recent'} ${process.env.VITE_COMMIT_REF ? `(Git Commit: ${process.env.VITE_COMMIT_REF})` : ''}`}
               >
                 BUILD {process.env.VITE_BUILD_NUMBER ? `#${process.env.VITE_BUILD_NUMBER}` : `#${surveyVersionInfo.versionStr}`}
               </span>

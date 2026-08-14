@@ -7,7 +7,7 @@ import {defineConfig, loadEnv} from 'vite';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
 
-  // Generate human-readable date-time build stamp (e.g. 2026.08.13-1839)
+  // Generate human-readable date-time build stamp (e.g. 2026.08.13-1847)
   const now = new Date();
   const pad = (n: number) => n.toString().padStart(2, '0');
   const dateStamp = `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
@@ -16,13 +16,12 @@ export default defineConfig(({mode}) => {
   const explicitBuild = env.VITE_BUILD_NUMBER || process.env.VITE_BUILD_NUMBER || process.env.BUILD_NUMBER;
   const commitRef = process.env.COMMIT_REF || env.COMMIT_REF;
   
-  // Format human-readable build string
+  // Format human-readable build string (e.g. #2026.08.13-1847)
   let buildNumberStr = '';
   if (explicitBuild) {
     buildNumberStr = explicitBuild;
-  } else if (commitRef) {
-    buildNumberStr = `git-${commitRef.slice(0, 7)}`;
   } else {
+    // Default to clean date-time stamp rather than obscure git SHA
     buildNumberStr = dateStamp;
   }
 
@@ -44,6 +43,7 @@ export default defineConfig(({mode}) => {
       'process.env.VITE_FIREBASE_DATABASE_ID': JSON.stringify(env.VITE_FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID || env.FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID || '(default)'),
       'process.env.VITE_BUILD_NUMBER': JSON.stringify(buildNumberStr),
       'process.env.VITE_BUILD_TIME': JSON.stringify(humanDateStr),
+      'process.env.VITE_COMMIT_REF': JSON.stringify(commitRef ? commitRef.slice(0, 7) : ''),
     },
     resolve: {
       alias: {
