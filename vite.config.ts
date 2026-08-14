@@ -6,6 +6,26 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+
+  // Generate human-readable date-time build stamp (e.g. 2026.08.13-1839)
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const dateStamp = `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const humanDateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+
+  const explicitBuild = env.VITE_BUILD_NUMBER || process.env.VITE_BUILD_NUMBER || process.env.BUILD_NUMBER;
+  const commitRef = process.env.COMMIT_REF || env.COMMIT_REF;
+  
+  // Format human-readable build string
+  let buildNumberStr = '';
+  if (explicitBuild) {
+    buildNumberStr = explicitBuild;
+  } else if (commitRef) {
+    buildNumberStr = `git-${commitRef.slice(0, 7)}`;
+  } else {
+    buildNumberStr = dateStamp;
+  }
+
   return {
     plugins: [react(), tailwindcss()],
     test: {
@@ -22,7 +42,8 @@ export default defineConfig(({mode}) => {
       'process.env.VITE_FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || env.FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID),
       'process.env.VITE_FIREBASE_APP_ID': JSON.stringify(env.VITE_FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID || env.FIREBASE_APP_ID || process.env.FIREBASE_APP_ID),
       'process.env.VITE_FIREBASE_DATABASE_ID': JSON.stringify(env.VITE_FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID || env.FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID || '(default)'),
-      'process.env.VITE_BUILD_NUMBER': JSON.stringify(env.VITE_BUILD_NUMBER || process.env.VITE_BUILD_NUMBER || process.env.BUILD_NUMBER || process.env.BUILD_ID || process.env.DEPLOY_ID || (process.env.COMMIT_REF ? process.env.COMMIT_REF.slice(0, 7) : '') || ''),
+      'process.env.VITE_BUILD_NUMBER': JSON.stringify(buildNumberStr),
+      'process.env.VITE_BUILD_TIME': JSON.stringify(humanDateStr),
     },
     resolve: {
       alias: {

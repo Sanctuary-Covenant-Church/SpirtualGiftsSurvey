@@ -1504,8 +1504,11 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
           <div>
             <h2 className="text-sm font-bold uppercase tracking-[0.2em]">Curator Panel</h2>
             <p className="text-[10px] text-brand-muted uppercase font-medium mt-0.5">Management Console</p>
-            <div className="mt-2">
-              <span className="inline-block text-[9px] font-mono text-brand-muted bg-brand-surface px-2 py-0.5 rounded-md border border-brand-border/80 font-bold tracking-wider">
+            <div className="mt-2 flex flex-col gap-0.5">
+              <span 
+                className="inline-block text-[9px] font-mono text-brand-muted bg-brand-surface px-2 py-0.5 rounded-md border border-brand-border/80 font-bold tracking-wider w-fit"
+                title={process.env.VITE_BUILD_TIME ? `Built: ${process.env.VITE_BUILD_TIME}` : 'Local Development'}
+              >
                 BUILD {process.env.VITE_BUILD_NUMBER ? `#${process.env.VITE_BUILD_NUMBER}` : `#${surveyVersionInfo.versionStr}`}
               </span>
             </div>
