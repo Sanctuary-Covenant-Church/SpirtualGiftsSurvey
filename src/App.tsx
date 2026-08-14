@@ -51,6 +51,7 @@ export default function App() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
   const [userInfo, setUserInfo] = useState({ name: '', email: '' });
+  const [consentGiven, setConsentGiven] = useState(false); // Explicit opt-in (unchecked by default)
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEmailSubmitted, setIsEmailSubmitted] = useState(false);
   const [emailStatus, setEmailStatus] = useState<{ success: boolean; mode?: string; message: string } | null>(null);
@@ -315,7 +316,15 @@ export default function App() {
     setEmailStatus(null);
     try {
       const computedResult = result || calculateResult(responses);
-      const finalResult = { ...computedResult, ...userInfo };
+      const consentTs = consentGiven ? new Date().toISOString() : undefined;
+      const finalResult = { 
+        ...computedResult, 
+        ...userInfo,
+        consentGiven,
+        sharingConsented: consentGiven,
+        consentTimestamp: consentTs,
+        consentTextVersion: 'v1.0'
+      };
       setResult(finalResult);
       setView('results');
 
@@ -381,7 +390,11 @@ export default function App() {
         primaryGiftIds: finalResult.primaryGiftIds || [],
         topGifts: finalResult.topGifts || [],
         topMinistryMatches: finalResult.topMinistryMatches || [],
-        scores: finalResult.scores || {}
+        scores: finalResult.scores || {},
+        consentGiven: consentGiven,
+        sharingConsented: consentGiven,
+        consentTimestamp: consentTs || null,
+        consentTextVersion: 'v1.0'
       };
 
       if (isFirebaseConfigured && db) {
@@ -656,6 +669,19 @@ export default function App() {
                         className="w-full px-0 py-4 bg-transparent border-b border-brand-border focus:border-brand-text outline-none text-sm transition-all placeholder:text-brand-muted/50"
                         placeholder="EMAIL ADDRESS"
                       />
+                    </div>
+                    <div className="pt-2">
+                      <label className="flex items-start gap-3 cursor-pointer group select-none">
+                        <input 
+                          type="checkbox"
+                          checked={consentGiven}
+                          onChange={(e) => setConsentGiven(e.target.checked)}
+                          className="mt-0.5 w-4 h-4 rounded border-brand-border text-brand-red focus:ring-brand-red cursor-pointer shrink-0 accent-brand-red"
+                        />
+                        <span className="text-xs text-brand-muted group-hover:text-brand-text leading-relaxed font-normal">
+                          Share my result with Sanctuary Covenant Church. By checking this box I give permission for Sanctuary to receive and store my name, email address, and spiritual gifts assessment results and using them to connect me with serving opportunities that may fit how God has gifted me.
+                        </span>
+                      </label>
                     </div>
                     <button 
                       type="submit"

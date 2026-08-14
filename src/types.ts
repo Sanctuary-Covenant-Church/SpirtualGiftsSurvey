@@ -54,6 +54,12 @@ export interface SurveyResult {
   topMinistryMatches?: MinistryMatch[];
   email?: string;
   name?: string;
+  consentGiven?: boolean;
+  sharingConsented?: boolean;
+  consentTimestamp?: string;
+  consentTextVersion?: string;
+  optedOutByAdmin?: boolean;
+  optOutTimestamp?: string;
 }
 
 export interface EmailRecipientConfig {
