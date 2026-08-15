@@ -1153,7 +1153,7 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
     const target = testEmailAddress.trim() || emailRecipients[0] || 'cdonyi@gmail.com';
     setIsTestingEmail(true);
     setTestEmailResult(null);
-    const apiBase = import.meta.env.VITE_API_URL || '';
+    const apiBase = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
     try {
       const res = await fetch(`${apiBase}/api/test-email`, {
         method: 'POST',
@@ -1164,12 +1164,13 @@ export default function AdminDashboard({ onExit }: { onExit: () => void }) {
       if (contentType.includes('application/json')) {
         const data = await res.json();
         if (res.ok) {
-          setTestEmailResult(`Success (${data.mode}): ${data.message}`);
+          setTestEmailResult(`Success (${data.mode || 'sent'}): ${data.message || 'Test email dispatched successfully.'}`);
         } else {
-          setTestEmailResult(`Error: ${data.error || 'Failed to send test email.'}`);
+          setTestEmailResult(`Error (${res.status}): ${data.error || 'Failed to send test email.'}`);
         }
       } else {
-        setTestEmailResult(`404 Not Found: Netlify is running in static frontend mode. To enable backend email sending, deploy server.ts (e.g. to Cloud Run) and set VITE_API_URL or a Netlify proxy rule.`);
+        const text = await res.text().catch(() => '');
+        setTestEmailResult(`Server returned non-JSON response (${res.status} ${res.statusText}): ${text.substring(0, 150) || 'Check backend configuration'}`);
       }
     } catch (err: any) {
       setTestEmailResult(`Error: ${err.message || 'Connection failed'}`);
