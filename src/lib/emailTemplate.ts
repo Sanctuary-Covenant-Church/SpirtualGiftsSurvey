@@ -9,7 +9,6 @@ export interface GiftMatchData {
   maxScore?: number;
   scripture?: string;
   description: string;
-  serviceTeams?: string[];
 }
 
 export interface MinistryMatchData {
@@ -46,52 +45,17 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
         </div>
       </td>
       <td style="padding: 14px 16px; vertical-align: top; text-align: right; width: 80px;">
-        <span style="display: inline-block; background-color: #F6F4F0; color: #1C1B1A; font-weight: bold; font-size: 13px; padding: 4px 10px; border-radius: 12px; border: 1px solid #DDD9D0;">
+        <span style="display: inline-block; background-color: #F6F4F0; color: #1C1B1A; font-weight: bold; font-size: 13px; padding: 4px 10px; rounded: 12px; border: 1px solid #DDD9D0;">
           ${gift.score} pts
         </span>
       </td>
     </tr>
   `).join('');
 
-  // Determine top ministry team matches (1 team per top gift in round-robin sequence)
-  let matchesToRender = topMinistryMatches || [];
-
-  if (matchesToRender.length === 0 && topGifts && topGifts.length > 0) {
-    const computedMatches: MinistryMatchData[] = [];
-    const seenTeams = new Set<string>();
-    const top5Gifts = topGifts.slice(0, 5);
-    const giftPointers = top5Gifts.map(() => 0);
-    let addedInRound = true;
-
-    while (computedMatches.length < 5 && addedInRound) {
-      addedInRound = false;
-      for (let i = 0; i < top5Gifts.length; i++) {
-        if (computedMatches.length >= 5) break;
-        const gift = top5Gifts[i];
-        if (gift.serviceTeams && gift.serviceTeams.length > 0) {
-          while (giftPointers[i] < gift.serviceTeams.length) {
-            const team = gift.serviceTeams[giftPointers[i]];
-            giftPointers[i]++;
-            if (!seenTeams.has(team)) {
-              seenTeams.add(team);
-              computedMatches.push({
-                teamName: team,
-                giftName: gift.name
-              });
-              addedInRound = true;
-              break;
-            }
-          }
-        }
-      }
-    }
-    matchesToRender = computedMatches;
-  }
-
-  const ministryHtml = matchesToRender.length > 0 ? matchesToRender.slice(0, 5).map((match, idx) => `
+  const ministryHtml = topMinistryMatches.slice(0, 5).map((match, idx) => `
     <div style="background-color: #FFFFFF; border: 1px solid #EAE7E1; border-radius: 12px; padding: 14px 18px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
       <div>
-        <span style="display: inline-block; font-size: 11px; font-weight: bold; color: #8C232C; text-transform: uppercase; letter-spacing: 0.1em;">
+        <span style="display: inline-block; font-size: 11px; font-weight: bold; color: #8C232C; text-transform: uppercase; tracking: 0.1em;">
           Match #${idx + 1}
         </span>
         <div style="font-size: 15px; font-weight: bold; color: #1C1B1A; font-family: Georgia, serif; margin-top: 2px;">
@@ -104,9 +68,7 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
         </span>
       </div>
     </div>
-  `).join('') : `
-    <div style="font-size: 13px; color: #8C8880; font-style: italic;">No specific ministry team matches found.</div>
-  `;
+  `).join('');
 
   return `
 <!DOCTYPE html>
@@ -160,7 +122,7 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
           <!-- Top 5 Spiritual Gifts -->
           <tr>
             <td style="padding: 32px 32px 24px 32px;">
-              <h2 style="font-family: Georgia, serif; font-size: 20px; font-style: italic; color: #1C1B1A; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #8C232C; padding-bottom: 8px; display: inline-block;">
+              <h2 style="font-family: Georgia, serif; font-size: 20px; italic: true; color: #1C1B1A; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #8C232C; padding-bottom: 8px; display: inline-block;">
                 Top 5 Spiritual Gifts
               </h2>
               <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; background-color: #FFFFFF;">
@@ -172,7 +134,7 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
           <!-- Top 5 Ministry Matches -->
           <tr>
             <td style="padding: 0 32px 32px 32px;">
-              <h2 style="font-family: Georgia, serif; font-size: 20px; font-style: italic; color: #1C1B1A; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #D4AF37; padding-bottom: 8px; display: inline-block;">
+              <h2 style="font-family: Georgia, serif; font-size: 20px; italic: true; color: #1C1B1A; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #D4AF37; padding-bottom: 8px; display: inline-block;">
                 Top 5 Ministry Team Matches
               </h2>
               <p style="font-size: 13px; color: #555350; margin-top: 0; margin-bottom: 16px; line-height: 1.5;">
