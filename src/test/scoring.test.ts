@@ -34,25 +34,36 @@ function calculateResultHelper(
     };
   });
 
-  // Top 5 Ministry Matches derived from top gifts
+  // Top 5 Ministry Matches derived from top gifts (1 team per gift round-robin)
   const ministryMatches: MinistryMatch[] = [];
   const seenTeams = new Set<string>();
+  const top5Gifts = topGiftsList.slice(0, 5);
 
-  for (const gMatch of topGiftsList) {
-    if (gMatch.serviceTeams) {
-      for (const team of gMatch.serviceTeams) {
-        if (!seenTeams.has(team)) {
-          seenTeams.add(team);
-          ministryMatches.push({
-            teamName: team,
-            giftId: gMatch.giftId,
-            giftName: gMatch.name,
-          });
-          if (ministryMatches.length >= 5) break;
+  const giftPointers = top5Gifts.map(() => 0);
+  let addedInRound = true;
+
+  while (ministryMatches.length < 5 && addedInRound) {
+    addedInRound = false;
+    for (let i = 0; i < top5Gifts.length; i++) {
+      if (ministryMatches.length >= 5) break;
+      const gMatch = top5Gifts[i];
+      if (gMatch.serviceTeams) {
+        while (giftPointers[i] < gMatch.serviceTeams.length) {
+          const team = gMatch.serviceTeams[giftPointers[i]];
+          giftPointers[i]++;
+          if (!seenTeams.has(team)) {
+            seenTeams.add(team);
+            ministryMatches.push({
+              teamName: team,
+              giftId: gMatch.giftId,
+              giftName: gMatch.name,
+            });
+            addedInRound = true;
+            break; // Take 1 team from this gift per round
+          }
         }
       }
     }
-    if (ministryMatches.length >= 5) break;
   }
 
   return {
