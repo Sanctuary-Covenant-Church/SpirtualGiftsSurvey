@@ -31,18 +31,18 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
     ? new Date(timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' })
     : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' });
 
-  const giftsHtml = topGifts.slice(0, 5).map((gift, idx) => `
+  const giftsHtml = (topGifts || []).slice(0, 5).map((gift, idx) => `
     <tr style="border-bottom: 1px solid #EAE7E1;">
       <td style="padding: 14px 16px; vertical-align: top; width: 40px; font-weight: bold; color: #8C232C; font-size: 16px;">
         #${idx + 1}
       </td>
       <td style="padding: 14px 16px; vertical-align: top;">
         <div style="font-size: 16px; font-weight: bold; color: #1C1B1A; font-family: Georgia, serif;">
-          ${gift.name}
+          ${gift.name || (gift as any).giftName || ''}
         </div>
         ${gift.scripture ? `<div style="font-size: 12px; color: #8C232C; font-style: italic; margin-top: 2px;">${gift.scripture}</div>` : ''}
         <div style="font-size: 13px; color: #555350; margin-top: 6px; line-height: 1.5;">
-          ${gift.description}
+          ${gift.description || ''}
         </div>
         ${gift.serviceTeams && gift.serviceTeams.length > 0 ? `
           <div style="font-size: 12px; color: #6E6B66; margin-top: 8px;">
@@ -52,13 +52,13 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
       </td>
       <td style="padding: 14px 16px; vertical-align: top; text-align: right; width: 80px;">
         <span style="display: inline-block; background-color: #F6F4F0; color: #1C1B1A; font-weight: bold; font-size: 13px; padding: 4px 10px; border-radius: 12px; border: 1px solid #DDD9D0;">
-          ${gift.score} pts
+          ${gift.score ?? 0} pts
         </span>
       </td>
     </tr>
   `).join('');
 
-  const ministryHtml = topMinistryMatches.slice(0, 5).map((match, idx) => `
+  const ministryHtml = (topMinistryMatches || []).slice(0, 5).map((match, idx) => `
     <div style="background-color: #FFFFFF; border: 1px solid #EAE7E1; border-radius: 12px; padding: 14px 18px; margin-bottom: 10px;">
       <span style="display: inline-block; font-size: 11px; font-weight: bold; color: #8C232C; text-transform: uppercase; letter-spacing: 0.1em;">
         Match #${idx + 1}
