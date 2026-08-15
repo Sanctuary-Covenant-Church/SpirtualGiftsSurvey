@@ -34,8 +34,10 @@ describe('Email Template Generation', () => {
     const html = generateResultsEmailHtml(payload);
 
     // Header validations
+    expect(html).toContain('Soul Discovery • Spiritual Gifts Assessment');
     expect(html).toContain('Top 5 Spiritual Gifts');
     expect(html).toContain('Top 5 Ministry Team Matches');
+    expect(html).toContain('Assessment Participant');
     expect(html).toContain('Jane Doe');
     expect(html).toContain('jane@example.com');
 

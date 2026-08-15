@@ -89,7 +89,7 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
                 Sanctuary Covenant Church
               </div>
               <h1 style="color: #FFFFFF; font-family: Georgia, serif; font-size: 26px; font-style: italic; margin: 0; font-weight: normal;">
-                Soul Discovery • Spiritual Gifts Survey
+                Soul Discovery • Spiritual Gifts Assessment
               </h1>
             </td>
           </tr>
@@ -101,7 +101,7 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
                 <tr>
                   <td>
                     <div style="font-size: 11px; font-weight: bold; color: #8C232C; text-transform: uppercase; letter-spacing: 0.15em;">
-                      Survey Participant
+                      Assessment Participant
                     </div>
                     <div style="font-size: 20px; font-weight: bold; color: #1C1B1A; margin-top: 4px; font-family: Georgia, serif;">
                       ${name || 'Anonymous Participant'}
