@@ -1,7 +1,7 @@
 // Netlify Serverless Function for Email Dispatch
 // Automatically handles POST /api/send-results when deployed on Netlify
 
-import { generateResultsEmailHtml } from "../../src/lib/emailTemplate.js";
+import { generateResultsEmailHtml, SurveyEmailPayload } from "../../src/lib/emailTemplate";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -29,7 +29,7 @@ export const handler = async (event, context) => {
   }
 
   try {
-    let payload = {};
+    let payload: Partial<SurveyEmailPayload> = {};
     try {
       payload = JSON.parse(event.body || "{}");
     } catch (parseErr) {
