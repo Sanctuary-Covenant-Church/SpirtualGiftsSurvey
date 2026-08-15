@@ -44,6 +44,11 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
         <div style="font-size: 13px; color: #555350; margin-top: 6px; line-height: 1.5;">
           ${gift.description}
         </div>
+        ${gift.serviceTeams && gift.serviceTeams.length > 0 ? `
+          <div style="font-size: 12px; color: #6E6B66; margin-top: 8px;">
+            <strong style="color: #8C232C;">Recommended Ministry Option:</strong> ${gift.serviceTeams[0]}
+          </div>
+        ` : ''}
       </td>
       <td style="padding: 14px 16px; vertical-align: top; text-align: right; width: 80px;">
         <span style="display: inline-block; background-color: #F6F4F0; color: #1C1B1A; font-weight: bold; font-size: 13px; padding: 4px 10px; border-radius: 12px; border: 1px solid #DDD9D0;">
