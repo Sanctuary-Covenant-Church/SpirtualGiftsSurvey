@@ -277,33 +277,22 @@ export default function App() {
       };
     });
 
-    // Top Ministry Matches derived from top gifts (1 team per gift round-robin)
+    // Top Ministry Matches derived from top gifts (strictly 1 team per gift)
     const ministryMatches: MinistryMatch[] = [];
     const seenTeams = new Set<string>();
     const top5Gifts = topGiftsList.slice(0, 5);
 
-    const giftPointers = top5Gifts.map(() => 0);
-    let addedInRound = true;
-
-    while (ministryMatches.length < 5 && addedInRound) {
-      addedInRound = false;
-      for (let i = 0; i < top5Gifts.length; i++) {
-        if (ministryMatches.length >= 5) break;
-        const gMatch = top5Gifts[i];
-        if (gMatch.serviceTeams) {
-          while (giftPointers[i] < gMatch.serviceTeams.length) {
-            const team = gMatch.serviceTeams[giftPointers[i]];
-            giftPointers[i]++;
-            if (!seenTeams.has(team)) {
-              seenTeams.add(team);
-              ministryMatches.push({
-                teamName: team,
-                giftId: gMatch.giftId,
-                giftName: gMatch.name
-              });
-              addedInRound = true;
-              break; // Take 1 team from this gift per round
-            }
+    for (const gMatch of top5Gifts) {
+      if (gMatch.serviceTeams && gMatch.serviceTeams.length > 0) {
+        for (const team of gMatch.serviceTeams) {
+          if (!seenTeams.has(team)) {
+            seenTeams.add(team);
+            ministryMatches.push({
+              teamName: team,
+              giftId: gMatch.giftId,
+              giftName: gMatch.name
+            });
+            break; // Take exactly 1 team per gift
           }
         }
       }
