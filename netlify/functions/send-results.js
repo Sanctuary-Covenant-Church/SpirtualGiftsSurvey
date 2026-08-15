@@ -223,8 +223,8 @@ export const handler = async (event, context) => {
 function generateResultsEmailHtml(data) {
   const { name, email, timestamp, topGifts, topMinistryMatches } = data;
   const formattedDate = timestamp 
-    ? new Date(timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-    : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    ? new Date(timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' })
+    : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' });
 
   const giftsHtml = (topGifts || []).slice(0, 5).map((gift, idx) => `
     <tr style="border-bottom: 1px solid #EAE7E1;">
@@ -239,6 +239,11 @@ function generateResultsEmailHtml(data) {
         <div style="font-size: 13px; color: #555350; margin-top: 6px; line-height: 1.5;">
           ${gift.description || ''}
         </div>
+        ${gift.serviceTeams && gift.serviceTeams.length > 0 ? `
+          <div style="font-size: 12px; color: #6E6B66; margin-top: 8px;">
+            <strong style="color: #8C232C;">Recommended Ministry Option:</strong> ${gift.serviceTeams[0]}
+          </div>
+        ` : ''}
       </td>
       <td style="padding: 14px 16px; vertical-align: top; text-align: right; width: 80px;">
         <span style="display: inline-block; background-color: #F6F4F0; color: #1C1B1A; font-weight: bold; font-size: 13px; padding: 4px 10px; border-radius: 12px; border: 1px solid #DDD9D0;">
@@ -246,6 +251,17 @@ function generateResultsEmailHtml(data) {
         </span>
       </td>
     </tr>
+  `).join('');
+
+  const ministryHtml = (topMinistryMatches || []).slice(0, 5).map((match, idx) => `
+    <div style="background-color: #FFFFFF; border: 1px solid #EAE7E1; border-radius: 12px; padding: 14px 18px; margin-bottom: 10px;">
+      <span style="display: inline-block; font-size: 11px; font-weight: bold; color: #8C232C; text-transform: uppercase; letter-spacing: 0.1em;">
+        Match #${idx + 1}
+      </span>
+      <div style="font-size: 15px; font-weight: bold; color: #1C1B1A; font-family: Georgia, serif; margin-top: 2px;">
+        ${match.teamName}
+      </div>
+    </div>
   `).join('');
 
   return `
@@ -268,7 +284,7 @@ function generateResultsEmailHtml(data) {
                 Sanctuary Covenant Church
               </div>
               <h1 style="color: #FFFFFF; font-family: Georgia, serif; font-size: 26px; font-style: italic; margin: 0; font-weight: normal;">
-                Soul Discovery • Spiritual Gifts Assessment
+                Soul Discovery • Spiritual Gifts Survey
               </h1>
             </td>
           </tr>
@@ -280,7 +296,7 @@ function generateResultsEmailHtml(data) {
                 <tr>
                   <td>
                     <div style="font-size: 11px; font-weight: bold; color: #8C232C; text-transform: uppercase; letter-spacing: 0.15em;">
-                      Assessment Participant
+                      Survey Participant
                     </div>
                     <div style="font-size: 20px; font-weight: bold; color: #1C1B1A; margin-top: 4px; font-family: Georgia, serif;">
                       ${name || 'Anonymous Participant'}
@@ -309,28 +325,16 @@ function generateResultsEmailHtml(data) {
             </td>
           </tr>
 
-          <!-- Ministry Team Matches Section -->
+          <!-- Top 5 Ministry Matches -->
           <tr>
             <td style="padding: 0 32px 32px 32px;">
-              <h2 style="font-family: Georgia, serif; font-size: 20px; font-style: italic; color: #1C1B1A; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #8C232C; padding-bottom: 8px; display: inline-block;">
-                Ministry Team Matches
+              <h2 style="font-family: Georgia, serif; font-size: 20px; font-style: italic; color: #1C1B1A; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #D4AF37; padding-bottom: 8px; display: inline-block;">
+                Top 5 Ministry Team Matches
               </h2>
-              ${(topGifts || []).some(g => g.serviceTeams && g.serviceTeams.length > 0) ? `
-                <div style="background-color: #FFFFFF;">
-                  ${topGifts.filter(g => g.serviceTeams && g.serviceTeams.length > 0).map((gift) => `
-                    <div style="margin-bottom: 12px; padding: 14px 16px; background-color: #FAF8F5; border-radius: 12px; border: 1px solid #EAE7E1;">
-                      <div style="font-size: 14px; font-weight: bold; color: #8C232C; font-family: Georgia, serif; margin-bottom: 6px;">
-                        ${gift.name || gift.giftName}
-                      </div>
-                      <div>
-                        ${(gift.serviceTeams || []).map(t => `<span style="display: inline-block; background-color: #FFFFFF; color: #1C1B1A; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; margin-right: 6px; margin-bottom: 6px; border: 1px solid #DDD9D0;">${t}</span>`).join('')}
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>
-              ` : `
-                <div style="font-size: 13px; color: #8C8880; font-style: italic;">No specific ministry team matches found.</div>
-              `}
+              <p style="font-size: 13px; color: #555350; margin-top: 0; margin-bottom: 16px; line-height: 1.5;">
+                Based on these spiritual gifts, here are the top 5 service teams at Sanctuary Covenant Church where ${name || 'they'} can flourish:
+              </p>
+              ${ministryHtml}
             </td>
           </tr>
 
