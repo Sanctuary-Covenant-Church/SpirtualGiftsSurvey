@@ -44,11 +44,6 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
         <div style="font-size: 13px; color: #555350; margin-top: 6px; line-height: 1.5;">
           ${gift.description || ''}
         </div>
-        ${gift.serviceTeams && gift.serviceTeams.length > 0 ? `
-          <div style="font-size: 12px; color: #6E6B66; margin-top: 8px;">
-            <strong style="color: #8C232C;">Recommended Ministry Option:</strong> ${gift.serviceTeams[0]}
-          </div>
-        ` : ''}
       </td>
       <td style="padding: 14px 16px; vertical-align: top; text-align: right; width: 80px;">
         <span style="display: inline-block; background-color: #F6F4F0; color: #1C1B1A; font-weight: bold; font-size: 13px; padding: 4px 10px; border-radius: 12px; border: 1px solid #DDD9D0;">
@@ -58,7 +53,26 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
     </tr>
   `).join('');
 
-  const ministryHtml = (topMinistryMatches || []).slice(0, 5).map((match, idx) => `
+  // Extract up to 5 service teams strictly from the #1 Spiritual Gift Match
+  const topGift = (topGifts || [])[0];
+  const primaryGiftName = topGift?.name || (topGift as any)?.giftName || '';
+  const firstGiftTeams = (topGift?.serviceTeams || []).slice(0, 5);
+
+  let ministryMatchesToRender: { teamName: string; giftName?: string }[] = [];
+
+  if (firstGiftTeams.length > 0) {
+    ministryMatchesToRender = firstGiftTeams.map(team => ({
+      teamName: team,
+      giftName: primaryGiftName
+    }));
+  } else if (topMinistryMatches && topMinistryMatches.length > 0) {
+    ministryMatchesToRender = topMinistryMatches.slice(0, 5).map(m => ({
+      teamName: m.teamName,
+      giftName: m.giftName
+    }));
+  }
+
+  const ministryHtml = ministryMatchesToRender.map((match, idx) => `
     <div style="background-color: #FFFFFF; border: 1px solid #EAE7E1; border-radius: 12px; padding: 14px 18px; margin-bottom: 10px;">
       <span style="display: inline-block; font-size: 11px; font-weight: bold; color: #8C232C; text-transform: uppercase; letter-spacing: 0.1em;">
         Match #${idx + 1}

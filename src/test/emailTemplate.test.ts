@@ -43,12 +43,11 @@ describe('Email Template Generation', () => {
 
     // Gift validation
     expect(html).toContain('Administration');
-    expect(html).toContain('Recommended Ministry Option:</strong> Operations Team');
-    expect(html).not.toContain('Finance Committee'); // Only 1st recommended option is rendered per gift
+    expect(html).not.toContain('Recommended Ministry Option');
 
-    // Ministry match validation
+    // Ministry match validation (strictly from #1 Spiritual Gift: Administration)
     expect(html).toContain('Operations Team');
-    expect(html).toContain('Care Ministry');
+    expect(html).toContain('Finance Committee');
   });
 
   it('handles missing or empty arrays gracefully', () => {
