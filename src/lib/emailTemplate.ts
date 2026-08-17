@@ -164,7 +164,7 @@ export function generateResultsEmailHtml(data: SurveyEmailPayload): string {
                 Sanctuary Covenant Church
               </div>
               <div style="font-size: 12px; color: #A09D98; margin-bottom: 16px;">
-                710 W 31st St, Minneapolis, MN 55408 • Sundays @ 9:00 AM & 11:00 AM
+                710 W Broadway Ave, Minneapolis, MN 55411 • Sundays @ 9:00 AM & 11:00 AM
               </div>
               <a href="https://sanctuarycov.org/join-a-team/" target="_blank" style="display: inline-block; background-color: #8C232C; color: #FFFFFF; text-decoration: none; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.15em; padding: 12px 24px; border-radius: 30px;">
                 Join a Ministry Team

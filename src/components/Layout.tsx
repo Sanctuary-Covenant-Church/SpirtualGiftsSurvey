@@ -182,7 +182,7 @@ export default function Layout({
               Loving God, loving our neighbors, and actively serving the city of Minneapolis together.
             </p>
             <div className="pt-2 text-xs text-white/70 space-y-1">
-              <p className="font-semibold text-white">710 W 31st St, Minneapolis, MN 55408</p>
+              <p className="font-semibold text-white">710 W Broadway Ave, Minneapolis, MN 55411</p>
               <p className="text-brand-red font-medium">Sunday Worship Services @ 9:00 AM & 11:00 AM</p>
             </div>
           </div>
